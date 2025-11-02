@@ -1,0 +1,41 @@
+# Developer Profile
+# Optimized for development environments with frequent cache cleanup and development-aware scheduling
+
+name: developer
+description: Developer profile with frequent cache cleanup and development-aware scheduling
+schedule: hourly
+operations:
+  - temp
+  - build_cache
+  - npm_cache
+  - docker_cache
+notifications: true
+log_level: INFO
+resource_limits:
+  memory: 1G
+  cpu: 60%
+  io_priority: 5
+  nice_level: 5
+  timeout: 1200
+conditions:
+  - no_git_operations: true
+  - no_active_compilation: true
+  - system_load: < 1.5
+conflict_avoidance:
+  - check_ide_processes: true
+  - avoid_build_processes: true
+  - check_docker_containers: true
+retry_policy:
+  enabled: true
+  max_retries: 1
+  delay: 180
+development_aware:
+  - respect_git_locks: true
+  - check_node_modules_size: true
+  - monitor_maven_gradle: true
+  - detect_vscode_intellij: true
+safe_paths:
+  - "/home/${USER}/projects/**/node_modules"
+  - "/home/${USER}/projects/**/.git"
+  - "/home/${USER}/projects/**/target"
+  - "/home/${USER}/projects/**/build"

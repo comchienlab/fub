@@ -1,0 +1,63 @@
+# FUB Scheduler Configuration
+# Main configuration for the scheduled maintenance system
+
+# Global scheduler settings
+scheduler:
+  version: "1.0.0"
+  auto_cleanup: true
+  global_notifications: true
+
+# Default resource limits for background operations
+resource_limits:
+  default_memory: "512M"
+  default_cpu: "50%"
+  default_io_priority: 7
+  default_nice_level: 10
+  default_timeout: 1800  # 30 minutes
+
+# Background operation conditions
+conditions:
+  default: "ac_power,system_load"
+  strict: "ac_power,system_load,idle_time,disk_space"
+  minimal: "system_load"
+
+# History and analytics settings
+history:
+  retention_days: 90
+  analysis_enabled: true
+  auto_report: false
+  report_interval: 7  # days
+
+# Notification settings
+notifications:
+  level: "INFO"
+  desktop_enabled: true
+  email_enabled: false
+  email_to: ""
+  email_from: "fub@$(hostname)"
+
+# Maintenance settings
+maintenance:
+  auto_retry: true
+  max_retries: 3
+  retry_delay: 300  # seconds
+  conflict_detection: true
+  emergency_stop: true
+
+# System integration
+systemd:
+  user_services: true
+  auto_reload: true
+  timer_persistence: true
+
+# Safety features
+safety:
+  backup_before_major_operations: true
+  rollback_on_failure: true
+  validate_system_state: true
+
+# Performance tuning
+performance:
+  parallel_operations: false
+  priority_adjustment: true
+  load_balancing: false

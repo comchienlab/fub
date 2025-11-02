@@ -1,0 +1,306 @@
+# FUB Tokyo Night Theme
+# Based on the popular Tokyo Night color scheme by Folke
+
+# Theme metadata
+name: "Tokyo Night"
+description: "Dark theme based on Tokyo Night color scheme"
+version: "1.0.0"
+author: "FUB Team"
+
+# Base colors
+background: "#1a1b26"
+foreground: "#c0caf5"
+cursor: "#c0caf5"
+
+# Normal ANSI colors
+color0: "#15161e"    # Black
+color1: "#f7768e"    # Red
+color2: "#9ece6a"    # Green
+color3: "#e0af68"    # Yellow
+color4: "#7aa2f7"    # Blue
+color5: "#bb9af7"    # Magenta
+color6: "#7dcfff"    # Cyan
+color7: "#a9b1d6"    # White
+
+# Bright ANSI colors
+color8: "#414868"    # Bright Black (Gray)
+color9: "#f7768e"    # Bright Red
+color10: "#9ece6a"   # Bright Green
+color11: "#e0af68"   # Bright Yellow
+color12: "#7aa2f7"   # Bright Blue
+color13: "#bb9af7"   # Bright Magenta
+color14: "#7dcfff"   # Bright Cyan
+color15: "#c0caf5"   # Bright White
+
+# UI specific colors
+ui:
+  selection_background: "#33467c"
+  selection_foreground: "#c0caf5"
+  url_color: "#73daca"
+  border_color: "#565f89"
+  separator_color: "#565f89"
+  scrollbar_thumb: "#565f89"
+  scrollbar_track: "#1a1b26"
+  tab_active: "#33467c"
+  tab_inactive: "#1a1b26"
+  progress_bar: "#7aa2f7"
+  progress_background: "#565f89"
+
+# Semantic colors
+semantic:
+  success: "#9ece6a"
+  warning: "#e0af68"
+  error: "#f7768e"
+  info: "#7aa2f7"
+  debug: "#7dcfff"
+  highlight: "#bb9af7"
+  muted: "#565f89"
+  emphasis: "#f7c090"
+  attention: "#ff9e64"
+
+# Status colors
+status:
+  online: "#9ece6a"
+  offline: "#f7768e"
+  active: "#7aa2f7"
+  inactive: "#565f89"
+  pending: "#e0af68"
+  unknown: "#414868"
+
+# Log level colors
+log_levels:
+  debug: "#7dcfff"
+  info: "#7aa2f7"
+  warn: "#e0af68"
+  error: "#f7768e"
+  fatal: "#f7768e"
+
+# Syntax highlighting colors
+syntax:
+  comment: "#565f89"
+  keyword: "#bb9af7"
+  string: "#9ece6a"
+  number: "#e0af68"
+  operator: "#7dcfff"
+  function: "#7aa2f7"
+  variable: "#c0caf5"
+  type: "#f7c090"
+  constant: "#ff9e64"
+
+# Code highlighting
+code:
+  background: "#24283b"
+  foreground: "#c0caf5"
+  selection: "#33467c"
+  line_number: "#565f89"
+  current_line: "#1f2335"
+  error_line: "#2d1f1f"
+
+# Terminal colors
+terminal:
+  black: "#15161e"
+  red: "#f7768e"
+  green: "#9ece6a"
+  yellow: "#e0af68"
+  blue: "#7aa2f7"
+  magenta: "#bb9af7"
+  cyan: "#7dcfff"
+  white: "#a9b1d6"
+  bright_black: "#414868"
+  bright_red: "#f7768e"
+  bright_green: "#9ece6a"
+  bright_yellow: "#e0af68"
+  bright_blue: "#7aa2f7"
+  bright_magenta: "#bb9af7"
+  bright_cyan: "#7dcfff"
+  bright_white: "#c0caf5"
+
+# Gradient colors
+gradient:
+  start: "#7aa2f7"
+  mid: "#bb9af7"
+  end: "#9ece6a"
+
+# Button colors
+buttons:
+  primary:
+    background: "#7aa2f7"
+    foreground: "#1a1b26"
+    hover: "#89b4fa"
+  secondary:
+    background: "#565f89"
+    foreground: "#c0caf5"
+    hover: "#67709b"
+  danger:
+    background: "#f7768e"
+    foreground: "#1a1b26"
+    hover: "#ff8595"
+  success:
+    background: "#9ece6a"
+    foreground: "#1a1b26"
+    hover: "#a8da76"
+
+# Input field colors
+inputs:
+  background: "#24283b"
+  foreground: "#c0caf5"
+  border: "#565f89"
+  border_focus: "#7aa2f7"
+  placeholder: "#565f89"
+  selection: "#33467c"
+
+# Table colors
+tables:
+  header:
+    background: "#24283b"
+    foreground: "#c0caf5"
+    border: "#565f89"
+  row:
+    background: "#1a1b26"
+    foreground: "#c0caf5"
+    alternate: "#1f2335"
+    border: "#565f89"
+    hover: "#24283b"
+
+# Dialog colors
+dialogs:
+  background: "#24283b"
+  foreground: "#c0caf5"
+  border: "#565f89"
+  title: "#7aa2f7"
+  overlay: "rgba(26, 27, 38, 0.8)"
+
+# Menu colors
+menus:
+  background: "#24283b"
+  foreground: "#c0caf5"
+  border: "#565f89"
+  selection: "#33467c"
+  separator: "#565f89"
+  shortcut: "#7dcfff"
+
+# Tooltip colors
+tooltips:
+  background: "#24283b"
+  foreground: "#c0caf5"
+  border: "#565f89"
+
+# Notification colors
+notifications:
+  info:
+    background: "#33467c"
+    foreground: "#c0caf5"
+    border: "#7aa2f7"
+  success:
+    background: "#1e2338"
+    foreground: "#c0caf5"
+    border: "#9ece6a"
+  warning:
+    background: "#2a2518"
+    foreground: "#c0caf5"
+    border: "#e0af68"
+  error:
+    background: "#2a1a1f"
+    foreground: "#c0caf5"
+    border: "#f7768e"
+
+# Graph/chart colors
+charts:
+  colors:
+    - "#7aa2f7"    # Blue
+    - "#bb9af7"    # Magenta
+    - "#9ece6a"    # Green
+    - "#e0af68"    # Yellow
+    - "#f7768e"    # Red
+    - "#7dcfff"    # Cyan
+    - "#f7c090"    # Orange
+    - "#ff9e64"    # Orange-red
+  grid: "#565f89"
+  axes: "#565f89"
+  labels: "#a9b1d6"
+
+# File type colors
+file_types:
+  directory: "#7aa2f7"
+  executable: "#9ece6a"
+  image: "#bb9af7"
+  video: "#e0af68"
+  audio: "#7dcfff"
+  document: "#c0caf5"
+  archive: "#f7768e"
+  code: "#9ece6a"
+  config: "#e0af68"
+  log: "#a9b1d6"
+
+# Diff colors
+diff:
+  added: "#9ece6a"
+  removed: "#f7768e"
+  modified: "#e0af68"
+  added_background: "rgba(158, 206, 106, 0.1)"
+  removed_background: "rgba(247, 118, 142, 0.1)"
+  modified_background: "rgba(224, 175, 104, 0.1)"
+
+# Git colors
+git:
+  clean: "#9ece6a"
+  modified: "#e0af68"
+  added: "#7aa2f7"
+  deleted: "#f7768e"
+  renamed: "#bb9af7"
+  untracked: "#7dcfff"
+
+# Performance metrics colors
+metrics:
+  cpu_low: "#9ece6a"
+  cpu_medium: "#e0af68"
+  cpu_high: "#f7768e"
+  memory_low: "#7aa2f7"
+  memory_medium: "#e0af68"
+  memory_high: "#f7768e"
+  disk_low: "#7dcfff"
+  disk_medium: "#e0af68"
+  disk_high: "#f7768e"
+  network_up: "#9ece6a"
+  network_down: "#7aa2f7"
+
+# Animation settings
+animation:
+  duration: 200              # Animation duration in milliseconds
+  easing: "ease-in-out"      # Animation easing function
+  enable_transitions: true   # Enable smooth transitions
+
+# Custom CSS/ANSI styles
+styles:
+  # Headers
+  h1:
+    color: "#7aa2f7"
+    bold: true
+  h2:
+    color: "#bb9af7"
+    bold: true
+  h3:
+    color: "#9ece6a"
+    bold: true
+
+  # Text formatting
+  bold:
+    color: "#c0caf5"
+    bold: true
+  italic:
+    color: "#a9b1d6"
+    italic: true
+  underline:
+    color: "#c0caf5"
+    underline: true
+  strikethrough:
+    color: "#565f89"
+    strikethrough: true
+
+  # Code formatting
+  inline_code:
+    background: "#24283b"
+    color: "#7dcfff"
+  code_block:
+    background: "#24283b"
+    color: "#c0caf5"
