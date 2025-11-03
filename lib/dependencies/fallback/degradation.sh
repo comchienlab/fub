@@ -111,7 +111,7 @@ identify_missing_capabilities() {
         MISSING_CAPABILITIES+=("interactive-ui")
     fi
 
-    if ! command_exists btop; then
+    if ! command_exists btop && ! command_exists htop && ! command_exists glances; then
         MISSING_CAPABILITIES+=("advanced-monitoring")
     fi
 
@@ -119,7 +119,7 @@ identify_missing_capabilities() {
         MISSING_CAPABILITIES+=("advanced-search")
     fi
 
-    if ! command_exists dust && ! command_exists duf; then
+    if ! command_exists dust && ! command_exists duf && ! command_exists ncdu; then
         MISSING_CAPABILITIES+=("advanced-storage-analysis")
     fi
 
@@ -129,6 +129,14 @@ identify_missing_capabilities() {
 
     if ! command_exists lazygit; then
         MISSING_CAPABILITIES+=("advanced-git-ui")
+    fi
+
+    if ! command_exists jq && ! command_exists yq; then
+        MISSING_CAPABILITIES+=("data-processing")
+    fi
+
+    if ! command_exists tree; then
+        MISSING_CAPABILITIES+=("tree-view")
     fi
 
     log_deps_debug "Found ${#MISSING_CAPABILITIES[@]} missing capabilities"
@@ -166,6 +174,14 @@ setup_fallback_implementations() {
             "advanced-git-ui")
                 setup_fallback_git_ui
                 FALLBACK_ACTIVE+=("git-ui:basic")
+                ;;
+            "data-processing")
+                setup_fallback_data_processing
+                FALLBACK_ACTIVE+=("data-processing:basic")
+                ;;
+            "tree-view")
+                setup_fallback_tree_view
+                FALLBACK_ACTIVE+=("tree-view:basic")
                 ;;
         esac
     done
@@ -382,6 +398,97 @@ setup_fallback_git_ui() {
     fi
 }
 
+# Fallback: Data processing (jq, yq)
+setup_fallback_data_processing() {
+    log_deps_debug "Setting up fallback data processing"
+
+    # Create fallback for jq
+    if ! command_exists jq; then
+        jq() {
+            local filter="$1"
+            local file="$2"
+
+            echo "${YELLOW}jq not available, basic JSON parsing with awk/sed:${RESET}"
+
+            if [[ -n "$file" && -f "$file" ]]; then
+                case "$filter" in
+                    ".")
+                        cat "$file"
+                        ;;
+                    ".*")
+                        # Simple key extraction
+                        grep -o '"[^"]*"[[:space:]]*:' "$file" | sed 's/[[:space:]]*:$//' | sed 's/"//g'
+                        ;;
+                    *)
+                        echo "${GRAY}Complex JSON filtering not available without jq${RESET}"
+                        echo "Install jq for advanced JSON processing: ${CYAN}fub-deps install jq${RESET}"
+                        ;;
+                esac
+            else
+                echo "${GRAY}File not found or no filter specified${RESET}"
+            fi
+        }
+
+        export -f jq
+        log_deps_debug "Fallback jq function created"
+    fi
+
+    # Create fallback for yq
+    if ! command_exists yq; then
+        yq() {
+            echo "${YELLOW}yq not available, using basic YAML parsing:${RESET}"
+            echo "Install yq for advanced YAML processing: ${CYAN}fub-deps install yq${RESET}"
+
+            # Very basic YAML extraction using grep and sed
+            if [[ -f "$2" ]]; then
+                case "$1" in
+                    ".key"|"*.key")
+                        grep "^[[:space:]]*key:" "$2" | sed 's/^[[:space:]]*key:[[:space:]]*//'
+                        ;;
+                    *)
+                        echo "${GRAY}Basic YAML filtering not available${RESET}"
+                        ;;
+                esac
+            fi
+        }
+
+        export -f yq
+        log_deps_debug "Fallback yq function created"
+    fi
+}
+
+# Fallback: Tree view
+setup_fallback_tree_view() {
+    log_deps_debug "Setting up fallback tree view"
+
+    # Create fallback for tree
+    if ! command_exists tree; then
+        tree() {
+            local path="${1:-.}"
+            local max_depth="${2:-2}"
+
+            echo "${YELLOW}tree not available, using find with formatting:${RESET}"
+
+            # Simple tree-like display using find and awk
+            find "$path" -type d | head -20 | while IFS= read -r dir; do
+                local level=$(echo "$dir" | tr '/' '\n' | wc -l)
+                local indent=""
+                for ((i=1; i<level; i++)); do
+                    indent="${indent}│   "
+                done
+                local basename=$(basename "$dir")
+                echo "${indent}├── ${CYAN}$basename${RESET}"
+            done
+
+            echo ""
+            echo "${GRAY}Install tree for better directory tree display: ${CYAN}fub-deps install tree${RESET}"
+        }
+
+        export -f tree
+        log_deps_debug "Fallback tree function created"
+    fi
+}
+
 # Get degradation summary
 get_degradation_summary() {
     echo "mode:$CURRENT_DEGRADATION_MODE"
@@ -448,6 +555,8 @@ show_improvement_suggestions() {
                 ;;
             "advanced-monitoring")
                 echo "  • Install ${GREEN}btop${RESET} for beautiful system monitoring"
+                echo "  • Or ${GREEN}htop${RESET} for classic process monitoring"
+                echo "  • Or ${GREEN}glances${RESET} for web-based monitoring"
                 ;;
             "advanced-search")
                 echo "  • Install ${GREEN}fd${RESET} for fast file searching"
@@ -456,6 +565,7 @@ show_improvement_suggestions() {
             "advanced-storage-analysis")
                 echo "  • Install ${GREEN}dust${RESET} for intuitive disk usage analysis"
                 echo "  • Install ${GREEN}duf${RESET} for beautiful disk space display"
+                echo "  • Or ${GREEN}ncdu${RESET} for interactive disk usage"
                 ;;
             "enhanced-file-viewing")
                 echo "  • Install ${GREEN}bat${RESET} for syntax-highlighted file viewing"
@@ -464,11 +574,18 @@ show_improvement_suggestions() {
             "advanced-git-ui")
                 echo "  • Install ${GREEN}lazygit${RESET} for intuitive git management"
                 ;;
+            "data-processing")
+                echo "  • Install ${GREEN}jq${RESET} for JSON processing"
+                echo "  • Install ${GREEN}yq${RESET} for YAML processing"
+                ;;
+            "tree-view")
+                echo "  • Install ${GREEN}tree${RESET} for directory tree display"
+                ;;
         esac
     done
 
     echo ""
-    echo "${GRAY}Run the installation wizard to add these tools.${RESET}"
+    echo "${GRAY}Run '${CYAN}fub-deps wizard${RESET}' to add these tools.${RESET}"
 }
 
 # Check if specific feature is available
@@ -536,7 +653,8 @@ warn_missing_feature() {
 export -f init_degradation_system analyze_system_degradation identify_missing_capabilities
 export -f setup_fallback_implementations setup_fallback_interactive_ui setup_fallback_monitoring
 export -f setup_fallback_search setup_fallback_storage setup_fallback_file_viewing
-export -f setup_fallback_git_ui get_degradation_summary show_degradation_status
+export -f setup_fallback_git_ui setup_fallback_data_processing setup_fallback_tree_view
+export -f get_degradation_summary show_degradation_status
 export -f show_improvement_suggestions is_feature_available get_feature_level
 export -f warn_missing_feature
 

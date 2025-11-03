@@ -228,6 +228,159 @@ check_tool_updates() {
     return 1
 }
 
+# Enhanced check if tool is outdated with package manager queries
+is_tool_outdated() {
+    local tool_name="$1"
+    local current_version="$2"
+
+    log_deps_debug "Checking if $tool_name $current_version is outdated"
+
+    # Get installation method
+    local install_method=$(get_tool_path "$tool_name")
+    if [[ -z "$install_method" ]]; then
+        return 1
+    fi
+
+    local package_manager
+    package_manager=$(detect_install_method "$install_method")
+
+    # Check for updates based on package manager
+    case "$package_manager" in
+        "apt")
+            check_apt_outdated "$tool_name" "$current_version"
+            ;;
+        "snap")
+            check_snap_outdated "$tool_name" "$current_version"
+            ;;
+        "brew")
+            check_brew_outdated "$tool_name" "$current_version"
+            ;;
+        "flatpak")
+            check_flatpak_outdated "$tool_name" "$current_version"
+            ;;
+        *)
+            log_deps_debug "Cannot check updates for package manager: $package_manager"
+            return 1
+            ;;
+    esac
+}
+
+# Check if apt package is outdated
+check_apt_outdated() {
+    local tool_name="$1"
+    local current_version="$2"
+
+    local package_name
+    package_name=$(get_package_name "$tool_name" "apt")
+
+    if [[ -z "$package_name" ]]; then
+        return 1
+    fi
+
+    # Check if apt-cache is available and package exists
+    if ! command_exists apt-cache; then
+        return 1
+    fi
+
+    if ! apt-cache show "$package_name" >/dev/null 2>&1; then
+        return 1
+    fi
+
+    # Get candidate version
+    local candidate_version
+    candidate_version=$(apt-cache policy "$package_name" 2>/dev/null | grep "Candidate:" | awk '{print $2}')
+
+    if [[ -n "$candidate_version" && "$candidate_version" != "(none)" ]]; then
+        if compare_semver "$candidate_version" ">" "$current_version"; then
+            log_deps_debug "$tool_name is outdated: $current_version < $candidate_version"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+# Check if snap package is outdated
+check_snap_outdated() {
+    local tool_name="$1"
+    local current_version="$2"
+
+    if ! command_exists snap; then
+        return 1
+    fi
+
+    # Get snap info
+    local snap_info
+    snap_info=$(snap info "$tool_name" 2>/dev/null)
+
+    if [[ -n "$snap_info" ]]; then
+        local tracking
+        tracking=$(echo "$snap_info" | grep "tracking:" | awk '{print $2}')
+
+        # If tracking latest/stable, check for refresh
+        if [[ "$tracking" == "latest/stable" || "$tracking" == "latest" ]]; then
+            # Check if refresh is available (simplified)
+            local refresh_available
+            refresh_available=$(snap refresh --list 2>/dev/null | grep "$tool_name")
+
+            if [[ -n "$refresh_available" ]]; then
+                log_deps_debug "$tool_name has snap refresh available"
+                return 0
+            fi
+        fi
+    fi
+
+    return 1
+}
+
+# Check if brew package is outdated
+check_brew_outdated() {
+    local tool_name="$1"
+    local current_version="$2"
+
+    if ! command_exists brew; then
+        return 1
+    fi
+
+    # Check if tool is in brew outdated list
+    local outdated_list
+    outdated_list=$(brew outdated 2>/dev/null)
+
+    if echo "$outdated_list" | grep -q "^$tool_name "; then
+        log_deps_debug "$tool_name is outdated according to brew"
+        return 0
+    fi
+
+    return 1
+}
+
+# Check if flatpak package is outdated
+check_flatpak_outdated() {
+    local tool_name="$1"
+    local current_version="$2"
+
+    if ! command_exists flatpak; then
+        return 1
+    fi
+
+    # Get application info
+    local app_info
+    app_info=$(flatpak info "$tool_name" 2>/dev/null)
+
+    if [[ -n "$app_info" ]]; then
+        # Check for available updates (simplified)
+        local updates
+        updates=$(flatpak remote-ls --updates 2>/dev/null)
+
+        if echo "$updates" | grep -q "$tool_name"; then
+            log_deps_debug "$tool_name has flatpak update available"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
 # Get version compatibility report
 get_version_compatibility_report() {
     local tool_name="$1"
@@ -514,6 +667,7 @@ show_version_cache_status() {
 # Export functions
 export -f init_version_check_system parse_semver compare_semver get_cached_version
 export -f update_version_cache check_tool_version_compatibility check_tool_updates
+export -f is_tool_outdated check_apt_outdated check_snap_outdated check_brew_outdated check_flatpak_outdated
 export -f get_version_compatibility_report show_version_compatibility_report
 export -f validate_all_tool_versions clear_version_cache show_version_cache_status
 

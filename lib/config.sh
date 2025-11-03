@@ -14,7 +14,7 @@ fi
 
 # Configuration constants
 [[ -z "${FUB_CONFIG_DIR:-}" ]] && readonly FUB_CONFIG_DIR="${FUB_CONFIG_DIR:-${FUB_ROOT_DIR}/config}"
-[[ -z "${FUB_USER_CONFIG_DIR:-}" ]] && readonly FUB_USER_CONFIG_DIR="${HOME}/.config/fub"
+[[ -z "${FUB_USER_CONFIG_DIR:-}" ]] && readonly FUB_USER_CONFIG_DIR="${HOME}/.fub"
 [[ -z "${FUB_CACHE_DIR:-}" ]] && readonly FUB_CACHE_DIR="${HOME}/.cache/fub"
 [[ -z "${FUB_LOG_DIR:-}" ]] && readonly FUB_LOG_DIR="${FUB_CACHE_DIR}/logs"
 
@@ -117,11 +117,11 @@ load_system_config() {
     fi
 }
 
-# Load user configuration from ~/.config/fub/
+# Load user configuration from ~/.fub/
 load_user_config() {
     local config_file="${FUB_USER_CONFIG_DIR}/config.yaml"
 
-    if file_exists "$config_file"; then
+    if [[ -f "$config_file" ]]; then
         log_debug "Loading user configuration from: $config_file"
         load_yaml_config "$config_file" "user"
     else
@@ -235,7 +235,7 @@ validate_config() {
     local validation_errors=0
 
     # Validate log level
-    local log_level="${FUB_CONFIG[log.level]}"
+    local log_level="${FUB_CONFIG_log_level}"
     case "$log_level" in
         DEBUG|INFO|WARN|ERROR|FATAL) ;;
         *)
@@ -245,39 +245,49 @@ validate_config() {
     esac
 
     # Validate timeout
-    local timeout="${FUB_CONFIG[timeout]}"
+    local timeout="${FUB_CONFIG_timeout}"
     if ! [[ "$timeout" =~ ^[0-9]+$ ]]; then
         log_error "Invalid timeout value: $timeout"
         ((validation_errors++))
     fi
 
     # Validate theme
-    local theme="${FUB_CONFIG[theme]}"
+    local theme="${FUB_CONFIG_theme}"
     local theme_file="${FUB_CONFIG_DIR}/themes/${theme}.yaml"
     if [[ ! -f "$theme_file" ]]; then
         log_warn "Theme file not found: $theme_file"
     fi
 
     # Validate backup location
-    local backup_location="${FUB_CONFIG[backup.location]}"
+    local backup_location="${FUB_DEFAULT_BACKUP_LOCATION}"
     if [[ ! -d "$backup_location" ]]; then
         log_debug "Creating backup directory: $backup_location"
         ensure_dir "$backup_location"
     fi
 
     # Validate cleanup retention periods
-    local retention_keys=("cleanup.temp_retention" "cleanup.log_retention" "cleanup.cache_retention")
-    for key in "${retention_keys[@]}"; do
-        local value="${FUB_CONFIG[$key]}"
-        if ! [[ "$value" =~ ^[0-9]+$ ]]; then
-            log_error "Invalid retention period for $key: $value"
-            ((validation_errors++))
-        fi
-    done
+    local temp_retention="${FUB_CONFIG_cleanup_temp_retention}"
+    local log_retention="${FUB_CONFIG_cleanup_log_retention}"
+    local cache_retention="${FUB_CONFIG_cleanup_cache_retention}"
+
+    if ! [[ "$temp_retention" =~ ^[0-9]+$ ]]; then
+        log_error "Invalid temp retention period: $temp_retention"
+        ((validation_errors++))
+    fi
+
+    if ! [[ "$log_retention" =~ ^[0-9]+$ ]]; then
+        log_error "Invalid log retention period: $log_retention"
+        ((validation_errors++))
+    fi
+
+    if ! [[ "$cache_retention" =~ ^[0-9]+$ ]]; then
+        log_error "Invalid cache retention period: $cache_retention"
+        ((validation_errors++))
+    fi
 
     # Validate network settings
-    local network_timeout="${FUB_CONFIG[network.timeout]}"
-    local network_retries="${FUB_CONFIG[network.retries]}"
+    local network_timeout="${FUB_CONFIG_network_timeout:-$FUB_DEFAULT_NETWORK_TIMEOUT}"
+    local network_retries="${FUB_CONFIG_network_retries:-$FUB_DEFAULT_NETWORK_RETRIES}"
 
     if ! [[ "$network_timeout" =~ ^[0-9]+$ ]]; then
         log_error "Invalid network timeout: $network_timeout"
@@ -412,10 +422,22 @@ export_config() {
 # FUB Configuration Export
 # Generated on $(date)
 
-$(for key in $(printf '%s\n' "${!FUB_CONFIG[@]}" | sort); do
-    value="${FUB_CONFIG[$key]}"
-    echo "${key}: ${value}"
-done)
+# Basic configuration
+log.level: ${FUB_CONFIG_log_level}
+log.file: ${FUB_CONFIG_log_file}
+theme: ${FUB_CONFIG_theme}
+interactive: ${FUB_CONFIG_interactive}
+timeout: ${FUB_CONFIG_timeout}
+dry_run: ${FUB_CONFIG_dry_run}
+
+# Cleanup configuration
+cleanup.temp_retention: ${FUB_CONFIG_cleanup_temp_retention}
+cleanup.log_retention: ${FUB_CONFIG_cleanup_log_retention}
+cleanup.cache_retention: ${FUB_CONFIG_cleanup_cache_retention}
+
+# Network configuration
+network.timeout: ${FUB_CONFIG_network_timeout:-$FUB_DEFAULT_NETWORK_TIMEOUT}
+network.retries: ${FUB_CONFIG_network_retries:-$FUB_DEFAULT_NETWORK_RETRIES}
 EOF
             ;;
         json)
@@ -423,16 +445,17 @@ EOF
             > "$output_file" cat << EOF
 {
   "fub_config": {
-$(local first=true
-for key in $(printf '%s\n' "${!FUB_CONFIG[@]}" | sort); do
-    value="${FUB_CONFIG[$key]}"
-    if [[ "$first" == "true" ]]; then
-        first=false
-    else
-        echo ","
-    fi
-    echo "    \"${key}\": \"${value}\""
-done)
+    "log.level": "${FUB_CONFIG_log_level}",
+    "log.file": "${FUB_CONFIG_log_file}",
+    "theme": "${FUB_CONFIG_theme}",
+    "interactive": "${FUB_CONFIG_interactive}",
+    "timeout": "${FUB_CONFIG_timeout}",
+    "dry_run": "${FUB_CONFIG_dry_run}",
+    "cleanup.temp_retention": "${FUB_CONFIG_cleanup_temp_retention}",
+    "cleanup.log_retention": "${FUB_CONFIG_cleanup_log_retention}",
+    "cleanup.cache_retention": "${FUB_CONFIG_cleanup_cache_retention}",
+    "network.timeout": "${FUB_CONFIG_network_timeout:-$FUB_DEFAULT_NETWORK_TIMEOUT}",
+    "network.retries": "${FUB_CONFIG_network_retries:-$FUB_DEFAULT_NETWORK_RETRIES}"
   }
 }
 EOF
@@ -443,10 +466,17 @@ EOF
 # FUB Configuration Export
 # Generated on $(date)
 
-$(for key in $(printf '%s\n' "${!FUB_CONFIG[@]}" | sort); do
-    value="${FUB_CONFIG[$key]}"
-    echo "FUB_CONFIG_${key//./_}=\"${value}\""
-done)
+export FUB_CONFIG_log_level="${FUB_CONFIG_log_level}"
+export FUB_CONFIG_log_file="${FUB_CONFIG_log_file}"
+export FUB_CONFIG_theme="${FUB_CONFIG_theme}"
+export FUB_CONFIG_interactive="${FUB_CONFIG_interactive}"
+export FUB_CONFIG_timeout="${FUB_CONFIG_timeout}"
+export FUB_CONFIG_dry_run="${FUB_CONFIG_dry_run}"
+export FUB_CONFIG_cleanup_temp_retention="${FUB_CONFIG_cleanup_temp_retention}"
+export FUB_CONFIG_cleanup_log_retention="${FUB_CONFIG_cleanup_log_retention}"
+export FUB_CONFIG_cleanup_cache_retention="${FUB_CONFIG_cleanup_cache_retention}"
+export FUB_CONFIG_network_timeout="${FUB_CONFIG_network_timeout:-$FUB_DEFAULT_NETWORK_TIMEOUT}"
+export FUB_CONFIG_network_retries="${FUB_CONFIG_network_retries:-$FUB_DEFAULT_NETWORK_RETRIES}"
 EOF
             ;;
         *)
@@ -516,42 +546,41 @@ show_config() {
         all)
             echo "${YELLOW}All Configuration:${RESET}"
             echo ""
-            for key in $(printf '%s\n' "${!FUB_CONFIG[@]}" | sort); do
-                value="${FUB_CONFIG[$key]}"
-                printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "$key" "$value"
-            done
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "log.level" "${FUB_CONFIG_log_level}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "log.file" "${FUB_CONFIG_log_file}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "theme" "${FUB_CONFIG_theme}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "interactive" "${FUB_CONFIG_interactive}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "timeout" "${FUB_CONFIG_timeout}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "dry_run" "${FUB_CONFIG_dry_run}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "cleanup.temp_retention" "${FUB_CONFIG_cleanup_temp_retention}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "cleanup.log_retention" "${FUB_CONFIG_cleanup_log_retention}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "cleanup.cache_retention" "${FUB_CONFIG_cleanup_cache_retention}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "network.timeout" "${FUB_CONFIG_network_timeout:-$FUB_DEFAULT_NETWORK_TIMEOUT}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "network.retries" "${FUB_CONFIG_network_retries:-$FUB_DEFAULT_NETWORK_RETRIES}"
             ;;
         log)
             echo "${YELLOW}Logging Configuration:${RESET}"
-            for key in log.level log.file log.max_size log.rotate log.rotate_count; do
-                value="${FUB_CONFIG[$key]}"
-                printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "$key" "$value"
-            done
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "log.level" "${FUB_CONFIG_log_level}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "log.file" "${FUB_CONFIG_log_file}"
             ;;
         theme)
             echo "${YELLOW}Theme Configuration:${RESET}"
-            echo "  ${GREEN}theme${RESET}: ${CYAN}${FUB_CONFIG[theme]}${RESET}"
+            echo "  ${GREEN}theme${RESET}: ${CYAN}${FUB_CONFIG_theme}${RESET}"
             ;;
         backup)
             echo "${YELLOW}Backup Configuration:${RESET}"
-            for key in backup.enabled backup.location; do
-                value="${FUB_CONFIG[$key]}"
-                printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "$key" "$value"
-            done
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "backup.location" "${FUB_DEFAULT_BACKUP_LOCATION}"
             ;;
         cleanup)
             echo "${YELLOW}Cleanup Configuration:${RESET}"
-            for key in cleanup.temp_retention cleanup.log_retention cleanup.cache_retention; do
-                value="${FUB_CONFIG[$key]}"
-                printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "$key" "$value"
-            done
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "cleanup.temp_retention" "${FUB_CONFIG_cleanup_temp_retention}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "cleanup.log_retention" "${FUB_CONFIG_cleanup_log_retention}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "cleanup.cache_retention" "${FUB_CONFIG_cleanup_cache_retention}"
             ;;
         network)
             echo "${YELLOW}Network Configuration:${RESET}"
-            for key in network.timeout network.retries; do
-                value="${FUB_CONFIG[$key]}"
-                printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "$key" "$value"
-            done
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "network.timeout" "${FUB_CONFIG_network_timeout:-$FUB_DEFAULT_NETWORK_TIMEOUT}"
+            printf "  ${GREEN}%-25s${RESET}: ${CYAN}%s${RESET}\n" "network.retries" "${FUB_CONFIG_network_retries:-$FUB_DEFAULT_NETWORK_RETRIES}"
             ;;
         *)
             log_error "Unknown configuration section: $section"
@@ -641,8 +670,8 @@ validate_cleanup_config() {
 }
 
 validate_network_config() {
-    local timeout="${FUB_CONFIG[network.timeout]}"
-    local retries="${FUB_CONFIG[network.retries]}"
+    local timeout="${FUB_CONFIG_network_timeout:-$FUB_DEFAULT_NETWORK_TIMEOUT}"
+    local retries="${FUB_CONFIG_network_retries:-$FUB_DEFAULT_NETWORK_RETRIES}"
 
     if ! [[ "$timeout" =~ ^[0-9]+$ ]] || [[ $timeout -lt 1 ]] || [[ $timeout -gt 300 ]]; then
         log_error "Invalid network timeout: $timeout (must be 1-300 seconds)"
@@ -656,7 +685,7 @@ validate_network_config() {
 }
 
 validate_security_config() {
-    local auto_update="${FUB_CONFIG[security.auto_update]}"
+    local auto_update="${FUB_DEFAULT_SECURITY_AUTO_UPDATE}"
 
     case "$auto_update" in
         true|false) ;;
@@ -668,8 +697,8 @@ validate_security_config() {
 }
 
 validate_backup_config() {
-    local backup_enabled="${FUB_CONFIG[backup.enabled]}"
-    local backup_location="${FUB_CONFIG[backup.location]}"
+    local backup_enabled="${FUB_DEFAULT_BACKUP_ENABLED}"
+    local backup_location="${FUB_DEFAULT_BACKUP_LOCATION}"
 
     case "$backup_enabled" in
         true|false) ;;

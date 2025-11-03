@@ -53,7 +53,7 @@ detect_package_managers() {
     printf '%s\n' "${available_managers[@]}"
 }
 
-# Get preferred package manager for a tool
+# Get preferred package manager for a tool (Ubuntu-optimized: apt > snap > flatpak)
 get_preferred_package_manager() {
     local tool_name="$1"
     local tool_index=$(find_tool_index "$tool_name")
@@ -78,14 +78,30 @@ get_preferred_package_manager() {
         fi
     fi
 
-    # Try managers in order of preference
-    IFS=',' read -ra preference_list <<< "$preference"
+    # Ubuntu-optimized preference: apt > snap > flatpak > others
+    local ubuntu_preference="apt,snap,flatpak,brew"
+    if [[ -n "$preference" ]]; then
+        ubuntu_preference="$preference"
+    fi
+
+    # Try managers in order of preference (Ubuntu-optimized)
+    IFS=',' read -ra preference_list <<< "$ubuntu_preference"
     for manager in "${preference_list[@]}"; do
         manager=$(trim "$manager")
         if command_exists "$manager"; then
             if echo "$packages" | grep -q "^${manager}:"; then
-                echo "$manager"
-                return 0
+                # Additional check for apt: ensure apt can actually install the package
+                if [[ "$manager" == "apt" ]]; then
+                    local package_name
+                    package_name=$(echo "$packages" | grep "^apt:" | cut -d':' -f2)
+                    if apt-cache show "$package_name" >/dev/null 2>&1; then
+                        echo "$manager"
+                        return 0
+                    fi
+                else
+                    echo "$manager"
+                    return 0
+                fi
             fi
         fi
     done
@@ -272,17 +288,37 @@ show_installation_details() {
     local description=$(get_tool_description "$tool_index")
     local size=$(get_tool_size "$tool_index")
     local benefit=$(get_tool_benefit "$tool_index")
+    local priority=$(get_tool_priority "$tool_index")
 
     echo ""
-    echo "${BOLD}${CYAN}Installation Details${RESET}"
-    echo "===================="
-    echo ""
-    echo "${YELLOW}Tool:${RESET} $tool_name"
-    echo "${YELLOW}Description:${RESET} $description"
-    echo "${YELLOW}Package Manager:${RESET} $package_manager"
-    echo "${YELLOW}Package Name:${RESET} $package_name"
-    echo "${YELLOW}Size:${RESET} $size"
-    echo "${YELLOW}Benefit:${RESET} $benefit"
+    if command_exists gum; then
+        gum style \
+            --foreground 212 \
+            --border rounded \
+            --border-foreground 212 \
+            --align left \
+            --margin "0 1" \
+            --padding "0 1" \
+            "🔧 Tool: $tool_name" \
+            "📦 Package: $package_name ($package_manager)" \
+            "📏 Size: $size" \
+            "⭐ Priority: $priority/100" \
+            "" \
+            "📝 Description: $description" \
+            "💡 Benefit: $benefit"
+    else
+        echo "${BOLD}${CYAN}╔══════════════════════════════════════════╗${RESET}"
+        echo "${BOLD}${CYAN}║          Installation Details             ║${RESET}"
+        echo "${BOLD}${CYAN}╚══════════════════════════════════════════╝${RESET}"
+        echo ""
+        echo "${YELLOW}🔧 Tool:${RESET} $tool_name"
+        echo "${YELLOW}📦 Package:${RESET} $package_name ($package_manager)"
+        echo "${YELLOW}📏 Size:${RESET} $size"
+        echo "${YELLOW}⭐ Priority:${RESET} $priority/100"
+        echo ""
+        echo "${CYAN}📝 Description:${RESET} $description"
+        echo "${CYAN}💡 Benefit:${RESET} $benefit"
+    fi
     echo ""
 }
 

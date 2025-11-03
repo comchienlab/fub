@@ -254,6 +254,73 @@ load_builtin_tools() {
         75 \
         "6MB"
 
+    # Additional Tools for comprehensive coverage
+    register_tool "jq" \
+        "$DEPS_CATEGORY_OPTIONAL" \
+        "Command-line JSON processor" \
+        "apt:jq,snap:jq,brew:jq" \
+        "1.6.0" \
+        "jq" \
+        "json,processor,data-transformation" \
+        "Lightweight and flexible command-line JSON processor" \
+        70 \
+        "2MB"
+
+    register_tool "yq" \
+        "$DEPS_CATEGORY_OPTIONAL" \
+        "Portable command-line YAML processor" \
+        "apt:yq,snap:yq,brew:yq" \
+        "4.0.0" \
+        "yq" \
+        "yaml,processor,data-transformation" \
+        "Portable command-line YAML processor with XML and JSON support" \
+        65 \
+        "3MB"
+
+    register_tool "htop" \
+        "$DEPS_CATEGORY_SYSTEM" \
+        "Interactive process viewer" \
+        "apt:htop,snap:htop,brew:htop" \
+        "3.0.0" \
+        "htop" \
+        "monitoring,process-viewer,system-stats" \
+        "Interactive process viewer and system monitor" \
+        80 \
+        "1MB"
+
+    register_tool "glances" \
+        "$DEPS_CATEGORY_SYSTEM" \
+        "Cross-platform system monitoring tool" \
+        "apt:glances,snap:glances,brew:glances" \
+        "3.1.0" \
+        "glances" \
+        "monitoring,system-stats,resource-usage" \
+        "Cross-platform system monitoring tool with web interface" \
+        70 \
+        "15MB"
+
+    register_tool "ncdu" \
+        "$DEPS_CATEGORY_ENHANCED" \
+        "NCurses Disk Usage" \
+        "apt:ncdu,snap:ncdu,brew:ncdu" \
+        "2.0.0" \
+        "ncdu" \
+        "disk-usage,du-alternative,storage-analysis" \
+        "NCurses Disk Usage analyzer with interactive interface" \
+        75 \
+        "1MB"
+
+    register_tool "tree" \
+        "$DEPS_CATEGORY_ENHANCED" \
+        "List contents of directories in a tree-like format" \
+        "apt:tree,snap:tree,brew:tree" \
+        "2.0.0" \
+        "tree" \
+        "file-listing,directory-browser,tree-view" \
+        "Display directory contents in tree-like format" \
+        60 \
+        "100KB"
+
     log_deps_debug "Loaded $(($DEPS_TOOL_count - DEPS_REGISTRY_LOADED_COUNT)) built-in tools"
 }
 

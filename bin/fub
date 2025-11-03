@@ -34,12 +34,23 @@ export INFO=""
 export DEBUG=""
 export MUTED=""
 
+# Load legacy compatibility first to detect legacy mode
+if [[ -f "${FUB_ROOT_DIR}/lib/legacy/compatibility.sh" ]]; then
+    source "${FUB_ROOT_DIR}/lib/legacy/compatibility.sh"
+fi
+
 source "${FUB_ROOT_DIR}/lib/theme.sh"
 source "${FUB_ROOT_DIR}/lib/config.sh"
 source "${FUB_ROOT_DIR}/lib/ui.sh"
 
 # Initialize theme system
 init_theme "minimal"
+
+# Initialize legacy mode if needed
+if [[ -f "${FUB_ROOT_DIR}/lib/legacy/legacy-mode.sh" ]]; then
+    source "${FUB_ROOT_DIR}/lib/legacy/legacy-mode.sh"
+    init_legacy_mode
+fi
 
 # FUB version and metadata (check if already defined)
 [[ -z "${FUB_NAME:-}" ]] && readonly FUB_NAME="FUB - Fast Ubuntu Utility Toolkit"
@@ -99,6 +110,7 @@ ${BOLD}Options:${RESET}
     ${YELLOW}-l, --log-level${RESET} LEVEL   Set logging level (DEBUG, INFO, WARN, ERROR, FATAL)
     ${YELLOW}-t, --theme${RESET} THEME       Set theme (default: tokyo-night)
     ${YELLOW}--no-interactive${RESET}        Run in non-interactive mode
+    ${YELLOW}--legacy-mode${RESET}           Run in legacy mode for script compatibility
     ${YELLOW}--list-commands${RESET}         List all available commands
     ${YELLOW}--list-modules${RESET}          List all available modules
 
@@ -156,6 +168,18 @@ ${BOLD}Commands:${RESET}
         ${CYAN}ui${RESET}                    Interactive management
         ${CYAN}ui-menu${RESET}               Launch UI menu
 
+    ${YELLOW}migration${RESET}               Migration and compatibility utilities
+        ${CYAN}migrate-config${RESET}         Migrate configuration from legacy format
+        ${CYAN}validate-script${RESET}        Validate script compatibility
+        ${CYAN}migrate-script${RESET}         Migrate script to new format
+        ${CYAN}detect-legacy${RESET}          Detect legacy configuration files
+
+    ${YELLOW}rollback${RESET}                 System rollback and recovery
+        ${CYAN}create-point${RESET}           Create rollback point
+        ${CYAN}list-points${RESET}            List available rollback points
+        ${CYAN}rollback${RESET} ID            Perform rollback to specified point
+        ${CYAN}emergency${RESET}              Emergency rollback to last known good state
+
 ${BOLD}Examples:${RESET}
     ${GREEN}fub${RESET} cleanup temp         # Clean temporary files
     ${GREEN}fub${RESET} system update        # Update system packages
@@ -165,6 +189,9 @@ ${BOLD}Examples:${RESET}
     ${GREEN}fub${RESET} scheduler enable desktop    # Enable desktop maintenance profile
     ${GREEN}fub${RESET} scheduler status            # Show scheduler status
     ${GREEN}fub${RESET} scheduler ui-menu           # Launch scheduler UI
+    ${GREEN}fub${RESET} migration migrate-config    # Migrate legacy configuration
+    ${GREEN}fub${RESET} rollback create-point       # Create a rollback point
+    ${GREEN}fub${RESET} --legacy-mode cleanup       # Run cleanup in legacy mode
 
 ${BOLD}Configuration:${RESET}
     Config file: ${CYAN}$FUB_CONFIG_FILE${RESET}
@@ -283,6 +310,10 @@ parse_args() {
                 FUB_INTERACTIVE=false
                 shift
                 ;;
+            --legacy-mode)
+                export FUB_LEGACY_MODE=true
+                shift
+                ;;
             --list-commands)
                 list_commands
                 exit 0
@@ -387,7 +418,24 @@ execute_command() {
             source "${FUB_ROOT_DIR}/lib/scheduler/scheduler-ui.sh"
             scheduler_ui_command "${args[@]}"
             ;;
+        migration)
+            migration_command "${args[@]}"
+            ;;
+        rollback)
+            rollback_command "${args[@]}"
+            ;;
         *)
+            # Check for legacy commands first
+            if command -v map_legacy_command >/dev/null 2>&1; then
+                local mapped_command
+                mapped_command=$(map_legacy_command "$command")
+                if [[ "$mapped_command" != "$command" ]]; then
+                    # Execute legacy command with mapping
+                    execute_legacy_command "$command" "${args[@]}"
+                    return $?
+                fi
+            fi
+
             # Try to load as module
             local module_file="${FUB_ROOT_DIR}/lib/${command}.sh"
             if file_exists "$module_file"; then
@@ -697,6 +745,299 @@ security_updates() {
         echo "Installing unattended-upgrades..."
         install_package unattended-upgrades
     fi
+}
+
+# Migration command handler
+migration_command() {
+    local action="${1:-help}"
+
+    case "$action" in
+        migrate-config)
+            shift
+            migrate_config_command "$@"
+            ;;
+        validate-script)
+            shift
+            validate_script_command "$@"
+            ;;
+        migrate-script)
+            shift
+            migrate_script_command "$@"
+            ;;
+        detect-legacy)
+            detect_legacy_config_command
+            ;;
+        help|--help|-h)
+            show_migration_help
+            ;;
+        *)
+            log_error "Unknown migration command: $action"
+            show_migration_help
+            exit 1
+            ;;
+    esac
+}
+
+# Rollback command handler
+rollback_command() {
+    local action="${1:-help}"
+
+    case "$action" in
+        create-point)
+            create_rollback_point_command
+            ;;
+        list-points)
+            list_rollback_points_command
+            ;;
+        rollback)
+            shift
+            perform_rollback_command "$@"
+            ;;
+        emergency)
+            emergency_rollback_command
+            ;;
+        help|--help|-h)
+            show_rollback_help
+            ;;
+        *)
+            log_error "Unknown rollback command: $action"
+            show_rollback_help
+            exit 1
+            ;;
+    esac
+}
+
+# Migration sub-commands
+migrate_config_command() {
+    local legacy_config="${1:-}"
+    local new_config="${2:-}"
+
+    if [[ -f "${FUB_ROOT_DIR}/lib/legacy/config-migration.sh" ]]; then
+        source "${FUB_ROOT_DIR}/lib/legacy/config-migration.sh"
+        init_migration_system
+
+        if [[ -n "$legacy_config" ]] && [[ -n "$new_config" ]]; then
+            migrate_configuration "$legacy_config" "$new_config"
+        else
+            migrate_all_legacy_configs
+        fi
+    else
+        log_error "Migration utilities not available"
+        exit 1
+    fi
+}
+
+validate_script_command() {
+    local script_path="$1"
+
+    if [[ -z "$script_path" ]]; then
+        log_error "Script path required"
+        echo "Usage: fub migration validate-script <script-path>"
+        exit 1
+    fi
+
+    if [[ -f "${FUB_ROOT_DIR}/lib/legacy/compatibility.sh" ]]; then
+        source "${FUB_ROOT_DIR}/lib/legacy/compatibility.sh"
+        validate_legacy_script "$script_path"
+    else
+        log_error "Compatibility utilities not available"
+        exit 1
+    fi
+}
+
+migrate_script_command() {
+    local script_path="$1"
+
+    if [[ -z "$script_path" ]]; then
+        log_error "Script path required"
+        echo "Usage: fub migration migrate-script <script-path>"
+        exit 1
+    fi
+
+    if [[ -f "${FUB_ROOT_DIR}/lib/legacy/legacy-mode.sh" ]]; then
+        source "${FUB_ROOT_DIR}/lib/legacy/legacy-mode.sh"
+
+        # Backup original script
+        local backup_path="${script_path}.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$script_path" "$backup_path"
+        log_info "Script backed up to: $backup_path"
+
+        # Perform script migration (simplified version)
+        log_info "Migrating script: $script_path"
+
+        # Apply legacy command mappings
+        sed -i.bak 's/fub --clean/fub cleanup/g' "$script_path"
+        sed -i 's/fub --temp/fub cleanup temp/g' "$script_path"
+        sed -i 's/fub --cache/fub cleanup cache/g' "$script_path"
+        sed -i 's/fub --logs/fub cleanup logs/g' "$script_path"
+        sed -i 's/fub --all/fub cleanup all/g' "$script_path"
+        sed -i 's/fub clean/fub cleanup/g' "$script_path"
+        sed -i 's/fub --dry/fub --dry-run/g' "$script_path"
+
+        log_success "Script migration completed"
+        log_info "Original script backed up to: $backup_path"
+    else
+        log_error "Legacy mode utilities not available"
+        exit 1
+    fi
+}
+
+detect_legacy_config_command() {
+    if [[ -f "${FUB_ROOT_DIR}/lib/legacy/config-migration.sh" ]]; then
+        source "${FUB_ROOT_DIR}/lib/legacy/config-migration.sh"
+
+        local -a legacy_configs
+        if readarray -t legacy_configs < <(detect_legacy_configs); then
+            echo "Found legacy configuration files:"
+            for config in "${legacy_configs[@]}"; do
+                echo "  $config"
+            done
+            echo ""
+            echo "Run 'fub migration migrate-config' to migrate these configurations"
+        else
+            echo "No legacy configuration files found"
+        fi
+    else
+        log_error "Migration utilities not available"
+        exit 1
+    fi
+}
+
+# Rollback sub-commands
+create_rollback_point_command() {
+    if [[ -f "${FUB_ROOT_DIR}/lib/legacy/rollback.sh" ]]; then
+        source "${FUB_ROOT_DIR}/lib/legacy/rollback.sh"
+        init_rollback_system
+
+        local rollback_id
+        rollback_id=$(create_rollback_point "manual-$(date +%Y%m%d_%H%M%S)" "Manual rollback point creation")
+        log_success "Rollback point created: $rollback_id"
+    else
+        log_error "Rollback utilities not available"
+        exit 1
+    fi
+}
+
+list_rollback_points_command() {
+    if [[ -f "${FUB_ROOT_DIR}/lib/legacy/rollback.sh" ]]; then
+        source "${FUB_ROOT_DIR}/lib/legacy/rollback.sh"
+        list_rollbacks
+    else
+        log_error "Rollback utilities not available"
+        exit 1
+    fi
+}
+
+perform_rollback_command() {
+    local rollback_id="$1"
+
+    if [[ -z "$rollback_id" ]]; then
+        log_error "Rollback ID required"
+        echo "Usage: fub rollback rollback <rollback-id>"
+        echo ""
+        echo "Available rollback points:"
+        list_rollback_points_command
+        exit 1
+    fi
+
+    if [[ -f "${FUB_ROOT_DIR}/lib/legacy/rollback.sh" ]]; then
+        source "${FUB_ROOT_DIR}/lib/legacy/rollback.sh"
+        init_rollback_system
+
+        # Confirm rollback
+        echo ""
+        print_warning "This will rollback all changes made after the specified rollback point."
+        print_warning "This action cannot be undone."
+        echo ""
+        read -p "Are you sure you want to continue? [y/N]: " confirm
+
+        if [[ "$confirm" =~ ^[Yy] ]]; then
+            perform_rollback "$rollback_id" "Manual rollback"
+        else
+            log_info "Rollback cancelled"
+        fi
+    else
+        log_error "Rollback utilities not available"
+        exit 1
+    fi
+}
+
+emergency_rollback_command() {
+    if [[ -f "${FUB_ROOT_DIR}/lib/legacy/rollback.sh" ]]; then
+        source "${FUB_ROOT_DIR}/lib/legacy/rollback.sh"
+        init_rollback_system
+
+        print_warning "Performing emergency rollback to last known good state..."
+        emergency_rollback "Manual emergency rollback"
+    else
+        log_error "Rollback utilities not available"
+        exit 1
+    fi
+}
+
+# Help functions for migration and rollback
+show_migration_help() {
+    cat << EOF
+${BOLD}${CYAN}FUB Migration Utilities${RESET}
+${ITALIC}Migrate and validate legacy configurations and scripts${RESET}
+
+${BOLD}Usage:${RESET}
+    ${GREEN}fub migration${RESET} [${YELLOW}ACTION${RESET}] [${YELLOW}ARGS${RESET}]
+
+${BOLD}Actions:${RESET}
+    ${YELLOW}migrate-config${RESET}           Migrate legacy configuration files
+        ${CYAN}[legacy-config]${RESET}       Optional: specific legacy config file
+        ${CYAN}[new-config]${RESET}          Optional: target new config file
+
+    ${YELLOW}validate-script${RESET}         Validate script compatibility
+        ${CYAN}<script-path>${RESET}          Path to script to validate
+
+    ${YELLOW}migrate-script${RESET}          Migrate script to new command format
+        ${CYAN}<script-path>${RESET}          Path to script to migrate
+
+    ${YELLOW}detect-legacy${RESET}           Detect legacy configuration files
+
+${BOLD}Examples:${RESET}
+    ${GREEN}fub${RESET} migration migrate-config                    # Auto-migrate all configs
+    ${GREEN}fub${RESET} migration migrate-config ~/.fubrc ~/.config/fub/config.yaml
+    ${GREEN}fub${RESET} migration validate-script ./cleanup.sh     # Validate script
+    ${GREEN}fub${RESET} migration migrate-script ./cleanup.sh      # Migrate script
+    ${GREEN}fub${RESET} migration detect-legacy                    # Find legacy configs
+
+EOF
+}
+
+show_rollback_help() {
+    cat << EOF
+${BOLD}${CYAN}FUB Rollback System${RESET}
+${ITALIC}Create and manage system rollback points for safe upgrades${RESET}
+
+${BOLD}Usage:${RESET}
+    ${GREEN}fub rollback${RESET} [${YELLOW}ACTION${RESET}] [${YELLOW}ARGS${RESET}]
+
+${BOLD}Actions:${RESET}
+    ${YELLOW}create-point${RESET}             Create a new rollback point
+
+    ${YELLOW}list-points${RESET}              List available rollback points
+
+    ${YELLOW}rollback${RESET}                 Perform rollback to specified point
+        ${CYAN}<rollback-id>${RESET}           ID of rollback point to restore
+
+    ${YELLOW}emergency${RESET}                Emergency rollback to last known good state
+
+${BOLD}Examples:${RESET}
+    ${GREEN}fub${RESET} rollback create-point                    # Create rollback point
+    ${GREEN}fub${RESET} rollback list-points                     # List rollback points
+    ${GREEN}fub${RESET} rollback rollback auto-20231201_143022   # Rollback to point
+    ${GREEN}fub${RESET} rollback emergency                       # Emergency rollback
+
+${BOLD}Safety:${RESET}
+    • Rollback points are created automatically before major operations
+    • System state is fully backed up including configurations and packages
+    • Emergency rollback is available if system becomes unstable
+    • Always test rollbacks in non-production environments first
+
+EOF
 }
 
 # Main execution

@@ -455,6 +455,90 @@ show_recommendations_prompt() {
     return 1
 }
 
+# Immediate installation prompt for missing tools (task 7.2 requirement)
+prompt_immediate_installation() {
+    local missing_tool="$1"
+    local tool_index=$(find_tool_index "$missing_tool")
+
+    if [[ $tool_index -lt 0 ]]; then
+        return 1
+    fi
+
+    local description=$(get_tool_description "$tool_index")
+    local size=$(get_tool_size "$tool_index")
+    local benefit=$(get_tool_benefit "$tool_index")
+    local priority=$(get_tool_priority "$tool_index")
+    local package_manager
+    package_manager=$(get_preferred_package_manager "$missing_tool")
+    local package_name
+    package_name=$(get_package_name "$missing_tool" "$package_manager")
+
+    echo ""
+    echo "${BOLD}${YELLOW}🚀 Missing Tool Detected: $missing_tool${RESET}"
+    echo "${BOLD}${YELLOW}═══════════════════════════════════════════${RESET}"
+    echo ""
+
+    if command_exists gum; then
+        gum style \
+            --foreground 208 \
+            --border double \
+            --border-foreground 208 \
+            --align left \
+            --margin "0 1" \
+            --padding "0 1" \
+            "💡 This tool is recommended for enhanced functionality" \
+            "" \
+            "📝 $description" \
+            "🎯 $benefit" \
+            "📏 Size: $size" \
+            "📦 Will be installed via: $package_manager ($package_name)"
+
+        echo ""
+        if gum confirm "Install $missing_tool now?" --default=true; then
+            return 0
+        else
+            if gum confirm "Skip this tool for now?" --default=true; then
+                return 1
+            else
+                if gum confirm "Never ask about this tool again?" --default=false; then
+                    # Add to user's ignore list
+                    echo "$missing_tool" >> "${DEPS_CACHE_DIR}/ignored_tools.txt"
+                    return 2
+                fi
+            fi
+        fi
+    else
+        echo "${CYAN}📝 Description:${RESET} $description"
+        echo "${CYAN}💡 Benefit:${RESET} $benefit"
+        echo "${CYAN}📏 Size:${RESET} $size"
+        echo "${CYAN}📦 Will be installed via:${RESET} $package_manager ($package_name)"
+        echo ""
+
+        echo -n "${YELLOW}Install $missing_tool now? [Y/n/s (skip)]: ${RESET}"
+        read -r response
+
+        case "$response" in
+            ""|[Yy]*)
+                return 0
+                ;;
+            [Ss]*)
+                return 1
+                ;;
+            *)
+                echo -n "${YELLOW}Never ask about this tool again? [y/N]: ${RESET}"
+                read -r never_ask
+                if [[ "$never_ask" =~ ^[Yy]$ ]]; then
+                    echo "$missing_tool" >> "${DEPS_CACHE_DIR}/ignored_tools.txt"
+                    return 2
+                fi
+                return 1
+                ;;
+        esac
+    fi
+
+    return 1
+}
+
 # Interactive installation wizard
 run_installation_wizard() {
     show_welcome_message
@@ -472,7 +556,10 @@ run_installation_wizard() {
         local status=$(get_cached_tool_status "$tool_name")
 
         if [[ "$status" == "$DEPS_STATUS_NOT_INSTALLED" ]]; then
-            missing_tools+=("$tool_name")
+            # Check if tool is in ignore list
+            if [[ ! -f "${DEPS_CACHE_DIR}/ignored_tools.txt" ]] || ! grep -q "^$tool_name$" "${DEPS_CACHE_DIR}/ignored_tools.txt"; then
+                missing_tools+=("$tool_name")
+            fi
         fi
     done
 
@@ -547,6 +634,6 @@ run_installation_wizard() {
 export -f init_installation_prompts show_welcome_message show_tool_selection_prompt
 export -f show_installation_confirmation show_installation_progress show_installation_success
 export -f show_installation_failure show_post_installation_tips show_completion_message
-export -f show_recommendations_prompt run_installation_wizard
+export -f show_recommendations_prompt prompt_immediate_installation run_installation_wizard
 
 log_deps_debug "Installation prompts system loaded"

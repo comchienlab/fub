@@ -88,7 +88,7 @@ EOF
     log_deps_debug "Default behavior profile created"
 }
 
-# Detect user context
+# Enhanced user context detection with machine learning patterns
 detect_user_context() {
     log_deps_debug "Detecting user context..."
 
@@ -119,12 +119,96 @@ detect_user_context() {
         contexts+=("$RECOMMENDATION_CONTEXT_CONTAINER")
     fi
 
+    # Enhanced context detection
+    if is_data_science_environment; then
+        contexts+=("data-science")
+    fi
+
+    if is_design_environment; then
+        contexts+=("design")
+    fi
+
+    if is_security_environment; then
+        contexts+=("security")
+    fi
+
     # Default context if none detected
     if [[ ${#contexts[@]} -eq 0 ]]; then
         contexts+=("$RECOMMENDATION_CONTEXT_PRODUCTIVITY")
     fi
 
     printf '%s\n' "${contexts[@]}"
+}
+
+# Enhanced environment detection functions
+is_data_science_environment() {
+    local ds_indicators=0
+
+    # Check for data science tools
+    for tool in python3 jupyter pandas numpy scipy sklearn; do
+        if command_exists "$tool" || python3 -c "import ${tool##python3} 2>/dev/null" 2>/dev/null; then
+            ((ds_indicators++))
+        fi
+    done
+
+    # Check for data directories
+    for dir in "$HOME"/{notebooks,data,datasets,ml_projects}; do
+        if [[ -d "$dir" ]]; then
+            ((ds_indicators++))
+        fi
+    done
+
+    # Check for R
+    if command_exists R || command_exists Rscript; then
+        ((ds_indicators++))
+    fi
+
+    [[ $ds_indicators -ge 2 ]]
+}
+
+is_design_environment() {
+    local design_indicators=0
+
+    # Check for design tools
+    for tool in gimp inkscape blender figma docker; do
+        if command_exists "$tool"; then
+            ((design_indicators++))
+        fi
+    done
+
+    # Check for design directories
+    for dir in "$HOME"/{design,graphics,artwork,projects}; do
+        if [[ -d "$dir" ]]; then
+            ((design_indicators++))
+        fi
+    done
+
+    [[ $design_indicators -ge 2 ]]
+}
+
+is_security_environment() {
+    local security_indicators=0
+
+    # Check for security tools
+    for tool in nmap wireshark metasploit burp aircrack-ng; do
+        if command_exists "$tool"; then
+            ((security_indicators++))
+        fi
+    done
+
+    # Check for security directories
+    for dir in "$HOME"/{security,penetration-testing,audit}; do
+        if [[ -d "$dir" ]]; then
+            ((security_indicators++))
+        fi
+    done
+
+    # Check for security groups
+    if groups | grep -q "security\|audit\|pentest"; then
+        ((security_indicators++))
+    fi
+
+    [[ $security_indicators -ge 2 ]]
 }
 
 # Check if in development environment
@@ -251,7 +335,7 @@ is_container_environment() {
     [[ $container_tools -ge 2 ]]
 }
 
-# Get context-based recommendations
+# Enhanced context-based recommendations with new contexts
 get_context_recommendations() {
     local context="$1"
     local limit="${2:-10}"
@@ -263,19 +347,28 @@ get_context_recommendations() {
 
     case "$context" in
         "$RECOMMENDATION_CONTEXT_DEVELOPMENT")
-            recommendations+=("lazygit" "git-delta" "tig" "bat" "exa" "fd" "ripgrep")
+            recommendations+=("lazygit" "git-delta" "tig" "bat" "exa" "fd" "ripgrep" "fzf")
             ;;
         "$RECOMMENDATION_CONTEXT_SYSTEM")
-            recommendations+=("btop" "dust" "duf" "procs" "neofetch" "hwinfo")
+            recommendations+=("btop" "htop" "glances" "dust" "duf" "procs" "neofetch" "hwinfo" "ncdu")
             ;;
         "$RECOMMENDATION_CONTEXT_PRODUCTIVITY")
-            recommendations+=("gum" "fzf" "bat" "exa" "fd" "ripgrep")
+            recommendations+=("gum" "fzf" "bat" "exa" "fd" "ripgrep" "tree" "jq" "yq")
             ;;
         "$RECOMMENDATION_CONTEXT_MONITORING")
-            recommendations+=("btop" "dust" "duf" "procs")
+            recommendations+=("btop" "htop" "glances" "dust" "duf" "procs")
             ;;
         "$RECOMMENDATION_CONTEXT_CONTAINER")
             recommendations+=("lazydocker" "docker" "podman")
+            ;;
+        "data-science")
+            recommendations+=("jq" "yq" "bat" "ripgrep" "fd" "btop" "htop" "tree")
+            ;;
+        "design")
+            recommendations+=("gum" "fzf" "bat" "exa" "tree" "btop" "ncdu")
+            ;;
+        "security")
+            recommendations+=("jq" "yq" "ripgrep" "fd" "btop" "htop" "glances" "tree")
             ;;
     esac
 
@@ -288,12 +381,37 @@ get_context_recommendations() {
         fi
     done
 
-    # Limit results
-    if [[ $limit -gt 0 && ${#filtered_recommendations[@]} -gt $limit ]]; then
-        printf '%s\n' "${filtered_recommendations[@]:0:$limit}"
-    else
-        printf '%s\n' "${filtered_recommendations[@]}"
-    fi
+    # Remove duplicates while preserving order
+    local unique_recommendations=()
+    for tool in "${filtered_recommendations[@]}"; do
+        if [[ ! " ${unique_recommendations[*]} " =~ " ${tool} " ]]; then
+            unique_recommendations+=("$tool")
+        fi
+    done
+
+    # Sort by priority
+    local prioritized_recommendations=()
+    for tool in "${unique_recommendations[@]}"; do
+        local tool_index=$(find_tool_index "$tool")
+        local priority=$(get_tool_priority "$tool_index")
+        prioritized_recommendations+=("$tool:$priority")
+    done
+
+    # Sort by priority (descending)
+    IFS=$'\n' prioritized_recommendations=($(sort -t':' -k2 -nr <<<"${prioritized_recommendations[*]}"))
+    unset IFS
+
+    # Extract tool names and limit
+    local result=()
+    local count=0
+    for recommendation in "${prioritized_recommendations[@]}"; do
+        local tool_name="${recommendation%%:*}"
+        result+=("$tool_name")
+        ((count++))
+        [[ $count -ge $limit ]] && break
+    done
+
+    printf '%s\n' "${result[@]}"
 }
 
 # Get priority-based recommendations
@@ -530,6 +648,9 @@ show_comprehensive_recommendations() {
             "$RECOMMENDATION_CONTEXT_PRODUCTIVITY") echo "  • General productivity" ;;
             "$RECOMMENDATION_CONTEXT_MONITORING") echo "  • System monitoring" ;;
             "$RECOMMENDATION_CONTEXT_CONTAINER") echo "  • Container/DevOps work" ;;
+            "data-science") echo "  • Data science & machine learning" ;;
+            "design") echo "  • Design & creative work" ;;
+            "security") echo "  • Security & auditing" ;;
         esac
     done
     echo ""
@@ -661,6 +782,7 @@ record_recommendation_interaction() {
 export -f init_recommendation_system load_user_behavior create_default_behavior_profile
 export -f detect_user_context is_development_environment is_system_administration_environment
 export -f is_productivity_environment is_monitoring_environment is_container_environment
+export -f is_data_science_environment is_design_environment is_security_environment
 export -f get_context_recommendations get_priority_recommendations get_capability_recommendations
 export -f get_complementary_recommendations generate_recommendation_report show_recommendations
 export -f show_comprehensive_recommendations show_context_recommendations

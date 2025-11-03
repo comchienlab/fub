@@ -104,7 +104,7 @@ detect_tool() {
     return 0
 }
 
-# Detect tool version
+# Enhanced tool detection with additional tools
 detect_tool_version() {
     local tool_name="$1"
     local executable="$2"
@@ -113,7 +113,7 @@ detect_tool_version() {
 
     local version=""
 
-    # Use tool-specific version detection
+    # Use tool-specific version detection with enhanced patterns
     case "$tool_name" in
         "gum")
             version=$("$executable" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
@@ -172,8 +172,23 @@ detect_tool_version() {
         "fzf")
             version=$("$executable" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
             ;;
+        "jq")
+            version=$("$executable" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            ;;
+        "yq")
+            version=$("$executable" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            ;;
+        "htop")
+            version=$("$executable" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            ;;
+        "glances")
+            version=$("$executable" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            ;;
+        "ncdu")
+            version=$("$executable" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            ;;
         *)
-            # Generic version detection
+            # Enhanced generic version detection with multiple patterns
             version=$("$executable" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
             if [[ -z "$version" ]]; then
                 version=$("$executable" -V 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
@@ -181,13 +196,23 @@ detect_tool_version() {
             if [[ -z "$version" ]]; then
                 version=$("$executable" -v 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
             fi
+            if [[ -z "$version" ]]; then
+                # Try version from help output
+                version=$("$executable" --help 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            fi
+            if [[ -z "$version" ]]; then
+                # Try looking for version in first line of man page
+                version=$(man "$executable" 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            fi
             ;;
     esac
 
-    # Clean version string
+    # Clean version string and handle pre-release identifiers
     if [[ -n "$version" ]]; then
         # Extract semantic version if multiple versions found
         version=$(echo "$version" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        # Handle versions like v1.2.3, 1.2.3-beta, 1.2.3-alpha.1, etc.
+        version=$(echo "$version" | sed 's/^v//' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
         log_deps_debug "Detected version for $tool_name: $version"
     else
         log_deps_debug "Could not detect version for $tool_name"
