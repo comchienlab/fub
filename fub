@@ -218,10 +218,34 @@ read_key() {
     esac
 }
 
-# Terminal capability detection
+# Calculate adaptive border width
+calculate_border_width() {
+    local terminal_width=$(tput cols 2>/dev/null || echo 80)
+    local min_width=40
+    local max_width=120
+
+    # Use smaller of terminal width or max width
+    local effective_width=$(( terminal_width < max_width ? terminal_width : max_width ))
+
+    # Ensure minimum width
+    if [[ $effective_width -lt $min_width ]]; then
+        effective_width=$min_width
+    fi
+
+    echo $effective_width
+}
+
+# Test Unicode box drawing support
+test_unicode_support() {
+    printf "╔═╗" >/dev/null 2>&1 && return 0 || return 1
+}
+
+# Terminal capability detection (enhanced)
 detect_terminal_capabilities() {
     local has_colors=false
     local has_cursor_control=false
+    local has_unicode=false
+    local has_box_drawing=false
 
     # Check color support
     if command -v tput >/dev/null 2>&1 && [[ $(tput colors 2>/dev/null) -gt 8 ]]; then
@@ -233,11 +257,152 @@ detect_terminal_capabilities() {
         has_cursor_control=true
     fi
 
+    # Check Unicode support
+    if [[ -n "${LANG:-}" && "${LANG}" == *"UTF"* ]]; then
+        has_unicode=true
+    fi
+
+    # Test box drawing characters
+    if test_unicode_support; then
+        has_box_drawing=true
+    fi
+
     # Set global capability flags
     TERMINAL_HAS_COLORS=$has_colors
     TERMINAL_HAS_CURSOR=$has_cursor_control
+    TERMINAL_HAS_UNICODE=$has_unicode
+    TERMINAL_HAS_BOX_DRAWING=$has_box_drawing
 
     return 0
+}
+
+# Select appropriate border style based on terminal capabilities
+select_border_style() {
+    if [[ "$TERMINAL_HAS_BOX_DRAWING" == true ]]; then
+        echo "double"    # ╔═╗║╚╝
+    elif [[ "$TERMINAL_HAS_UNICODE" == true ]]; then
+        echo "single"    # └─┘│┌┐
+    else
+        echo "ascii"     # +-++|
+    fi
+}
+
+# Generate border characters dynamically
+generate_border() {
+    local width=$1
+    local style=$2
+    local line_type=${3:-"all"}
+
+    case "$style" in
+        "double")
+            case "$line_type" in
+                "top")
+                    local top_line="╔"
+                    for ((i=0; i<width-2; i++)); do
+                        top_line+="═"
+                    done
+                    top_line+="╗"
+                    echo "$top_line"
+                    ;;
+                "bottom")
+                    local bottom_line="╚"
+                    for ((i=0; i<width-2; i++)); do
+                        bottom_line+="═"
+                    done
+                    bottom_line+="╝"
+                    echo "$bottom_line"
+                    ;;
+                "side") echo "║" ;;
+                "all")
+                    local top_line="╔"
+                    for ((i=0; i<width-2; i++)); do
+                        top_line+="═"
+                    done
+                    top_line+="╗"
+                    echo "$top_line"
+                    echo "║"
+                    local bottom_line="╚"
+                    for ((i=0; i<width-2; i++)); do
+                        bottom_line+="═"
+                    done
+                    bottom_line+="╝"
+                    echo "$bottom_line"
+                    ;;
+            esac
+            ;;
+        "single")
+            case "$line_type" in
+                "top")
+                    local top_line="┌"
+                    for ((i=0; i<width-2; i++)); do
+                        top_line+="─"
+                    done
+                    top_line+="┐"
+                    echo "$top_line"
+                    ;;
+                "bottom")
+                    local bottom_line="└"
+                    for ((i=0; i<width-2; i++)); do
+                        bottom_line+="─"
+                    done
+                    bottom_line+="┘"
+                    echo "$bottom_line"
+                    ;;
+                "side") echo "│" ;;
+                "all")
+                    local top_line="┌"
+                    for ((i=0; i<width-2; i++)); do
+                        top_line+="─"
+                    done
+                    top_line+="┐"
+                    echo "$top_line"
+                    echo "│"
+                    local bottom_line="└"
+                    for ((i=0; i<width-2; i++)); do
+                        bottom_line+="─"
+                    done
+                    bottom_line+="┘"
+                    echo "$bottom_line"
+                    ;;
+            esac
+            ;;
+        "ascii")
+            case "$line_type" in
+                "top")
+                    local top_line="+"
+                    for ((i=0; i<width-2; i++)); do
+                        top_line+="-"
+                    done
+                    top_line+="+"
+                    echo "$top_line"
+                    ;;
+                "bottom")
+                    local bottom_line="+"
+                    for ((i=0; i<width-2; i++)); do
+                        bottom_line+="-"
+                    done
+                    bottom_line+="+"
+                    echo "$bottom_line"
+                    ;;
+                "side") echo "|" ;;
+                "all")
+                    local top_line="+"
+                    for ((i=0; i<width-2; i++)); do
+                        top_line+="-"
+                    done
+                    top_line+="+"
+                    echo "$top_line"
+                    echo "|"
+                    local bottom_line="+"
+                    for ((i=0; i<width-2; i++)); do
+                        bottom_line+="-"
+                    done
+                    bottom_line+="+"
+                    echo "$bottom_line"
+                    ;;
+            esac
+            ;;
+    esac
 }
 
 # Cleanup terminal state
@@ -257,11 +422,17 @@ trap cleanup_terminal EXIT
 show_enhanced_dashboard() {
     local current_selection=${1:-1}
     local terminal_height
-    local terminal_width
+    local border_width
 
-    # Get terminal dimensions
+    # Detect terminal capabilities first
+    detect_terminal_capabilities
+
+    # Calculate adaptive dimensions
     terminal_height=$(tput lines 2>/dev/null || echo 24)
-    terminal_width=$(tput cols 2>/dev/null || echo 80)
+    border_width=$(calculate_border_width)
+
+    # Select border style based on capabilities
+    local border_style=$(select_border_style)
 
     # Clear screen and hide cursor
     clear
@@ -273,27 +444,45 @@ show_enhanced_dashboard() {
     # Move cursor to title position
     tput cup "$title_line" 0 2>/dev/null || echo -ne "\e[${title_line};1H"
 
+    # Generate borders dynamically
+    local top_border=$(generate_border $border_width $border_style "top")
+    local side_char=$(generate_border $border_width $border_style "side")
+    local bottom_border=$(generate_border $border_width $border_style "bottom")
+
     # Center the title
     local title="FUB DASHBOARD"
     local title_len=${#title}
-    local title_col=$(( (terminal_width - 54) / 2 ))
+    local title_col=$(( (border_width - title_len) / 2 ))
+    local tagline="Dig deep like a mole to clean your Ubuntu"
+    local tagline_len=${#tagline}
+    local tagline_col=$(( (border_width - tagline_len) / 2 ))
 
-    # Display title box
-    printf "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}\n"
-    printf "${BLUE}║${NC}%*s${WHITE}%s${NC}%*s${BLUE}║${NC}\n" \
-        $((title_col)) "" \
-        "$title" \
-        $((54 - title_col - title_len)) ""
-    printf "${BLUE}║${NC}%*sDig deep like a mole to clean your Ubuntu%*s${BLUE}║${NC}\n" \
-        $(( (54 - 45) / 2 )) "" \
-        $(( (54 - 45) / 2 )) ""
-    printf "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}\n"
+    # Display title box with safe color handling
+    if [[ "$TERMINAL_HAS_COLORS" == true ]]; then
+        printf "${BLUE}%s${NC}\n" "$top_border"
+        printf "${BLUE}%s${NC}%*s${WHITE}%s${NC}%*s${BLUE}%s${NC}\n" \
+            "$side_char" $title_col "" "$title" $((border_width - title_col - title_len)) "" "$side_char"
+        printf "${BLUE}%s${NC}%*s${CYAN}%s${NC}%*s${BLUE}%s${NC}\n" \
+            "$side_char" $tagline_col "" "$tagline" $((border_width - tagline_col - tagline_len)) "" "$side_char"
+        printf "${BLUE}%s${NC}\n" "$bottom_border"
+    else
+        printf "%s\n" "$top_border"
+        printf "%s%*s%s%*s%s\n" \
+            "$side_char" $title_col "" "$title" $((border_width - title_col - title_len)) "" "$side_char"
+        printf "%s%*s%s%*s%s\n" \
+            "$side_char" $tagline_col "" "$tagline" $((border_width - tagline_col - tagline_len)) "" "$side_char"
+        printf "%s\n" "$bottom_border"
+    fi
     echo ""
 
     # System info
     local ubuntu_version=$(detect_ubuntu_version)
     local disk_info=$(get_disk_info)
-    printf "${CYAN}System Info: %s | %s${NC}\n" "Ubuntu $ubuntu_version" "$disk_info"
+    if [[ "$TERMINAL_HAS_COLORS" == true ]]; then
+        printf "${CYAN}System Info: %s | %s${NC}\n" "Ubuntu $ubuntu_version" "$disk_info"
+    else
+        printf "System Info: %s | %s\n" "Ubuntu $ubuntu_version" "$disk_info"
+    fi
     echo ""
 
     # Menu options with dynamic highlighting
@@ -306,30 +495,61 @@ show_enhanced_dashboard() {
         "🚪  Exit"
     )
 
-    echo -e "${WHITE}Main Menu:${NC}"
+    if [[ "$TERMINAL_HAS_COLORS" == true ]]; then
+        echo -e "${WHITE}Main Menu:${NC}"
+    else
+        echo "Main Menu:"
+    fi
     echo ""
 
-    # Display options with bold cyan highlighting for selected item
+    # Calculate max text width for consistent formatting
+    local max_text_length=0
+    for option in "${options[@]}"; do
+        local option_len=${#option}
+        if [[ $option_len -gt $max_text_length ]]; then
+            max_text_length=$option_len
+        fi
+    done
+
+    # Ensure minimum width for menu items
+    local menu_width=$((max_text_length > 46 ? max_text_length : 46))
+    if [[ $menu_width -gt $((border_width - 4)) ]]; then
+        menu_width=$((border_width - 4))
+    fi
+
+    # Display options with highlighting
     for i in "${!options[@]}"; do
         local option_text="${options[$i]}"
 
         if [[ $((i + 1)) -eq $current_selection ]]; then
             # Bold cyan selection (without numbers)
-            printf "  \e[1m\e[36m%-50s\e[0m\n" "$option_text"
+            if [[ "$TERMINAL_HAS_COLORS" == true ]]; then
+                printf "  \e[1m\e[36m%-${menu_width}s\e[0m\n" "$option_text"
+            else
+                printf "  %-${menu_width}s\n" "$option_text"
+            fi
         else
-            # Normal display with white color (without numbers)
-            printf "  \e[37m%-50s\e[0m\n" "$option_text"
+            # Normal display with appropriate color
+            if [[ "$TERMINAL_HAS_COLORS" == true ]]; then
+                printf "  \e[37m%-${menu_width}s\e[0m\n" "$option_text"
+            else
+                printf "  %-${menu_width}s\n" "$option_text"
+            fi
         fi
     done
 
     echo ""
-    echo -e "${YELLOW}Navigation: ↑↓ arrows to move, Enter to select, q to quit${NC}"
+    if [[ "$TERMINAL_HAS_COLORS" == true ]]; then
+        echo -e "${YELLOW}Navigation: ↑↓ arrows to move, Enter to select, q to quit${NC}"
+    else
+        echo "Navigation: ↑↓ arrows to move, Enter to select, q to quit"
+    fi
     echo ""
 }
 
 # Handle terminal resize events
 handle_terminal_resize() {
-    # Redraw dashboard with current selection
+    # Redraw dashboard with current selection (new width calculation)
     show_enhanced_dashboard "$current_selection"
 }
 
