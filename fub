@@ -1056,23 +1056,42 @@ run_gum_uninstaller() {
     gum style --foreground 82 "Found $total_packages installed packages"
     echo ""
 
-    # Format packages with human-readable sizes for display
+    # Format packages with human-readable sizes and age indicators
     local formatted_list=$(mktemp)
+    local current_time=$(date +%s)
+
     while IFS='|' read -r pkg size_kb; do
         if [[ -n "$pkg" && -n "$size_kb" ]]; then
-            # Convert KB to human readable
+            # Convert KB to human readable (shorter format for better alignment)
             if [[ $size_kb -gt 1048576 ]]; then
                 # GB
-                size_display=$(awk "BEGIN {printf \"%.2f GB\", $size_kb/1048576}")
+                size_display=$(awk "BEGIN {printf \"%.1fG\", $size_kb/1048576}")
             elif [[ $size_kb -gt 1024 ]]; then
                 # MB
-                size_display=$(awk "BEGIN {printf \"%.1f MB\", $size_kb/1024}")
+                size_display=$(awk "BEGIN {printf \"%.0fM\", $size_kb/1024}")
             else
                 # KB
-                size_display="${size_kb} KB"
+                size_display="${size_kb}K"
             fi
-            # Right-align size in a fixed width field
-            printf "%-50s %10s\n" "$pkg" "$size_display" >> "$formatted_list"
+
+            # Determine package age (Old vs Recent)
+            local age_indicator="Recent"
+            local list_file="/var/lib/dpkg/info/${pkg}.list"
+
+            if [[ -f "$list_file" ]]; then
+                local file_time=$(stat -c %Y "$list_file" 2>/dev/null || echo "$current_time")
+                local days_old=$(( (current_time - file_time) / 86400 ))
+
+                if [[ $days_old -gt 180 ]]; then
+                    age_indicator="Old"
+                elif [[ $days_old -gt 90 ]]; then
+                    age_indicator="Aged"
+                fi
+            fi
+
+            # Format: package_name (size) | age
+            # Using proper spacing for alignment
+            printf "%-45s (%6s) | %-6s\n" "$pkg" "$size_display" "$age_indicator" >> "$formatted_list"
         fi
     done < "$temp_sizes"
 
@@ -1095,17 +1114,22 @@ run_gum_uninstaller() {
     echo ""
     gum style --foreground 82 "Found $filtered_count matching packages"
     echo ""
-    gum style --foreground 147 "Step 2: Select packages to uninstall"
-    gum style --foreground 226 "💡 Tip: Use Space to select multiple, Enter to confirm"
+
+    # Enhanced UI with header
+    gum style --foreground 212 --bold "Select Apps to Remove"
+    gum style --foreground 212 "═══════════════════════════════════════════════════════════════"
+    gum style --foreground 147 "💡 Old: >6 months | Aged: 3-6 months | Recent: <3 months"
+    gum style --foreground 226 "▶ Navigate | Space to select | Enter to confirm"
     echo ""
 
     # Now let user multi-select from filtered results
     local selected
     selected=$(echo "$filtered" | gum choose \
         --no-limit \
-        --cursor "→ " \
-        --selected-prefix "✓ " \
-        --unselected-prefix "○ " \
+        --cursor "▶ " \
+        --selected-prefix "☑ " \
+        --unselected-prefix "☐ " \
+        --cursor.foreground="212" \
         --height 20)
 
     rm -f "$temp_sizes" "$formatted_list"
@@ -1115,7 +1139,8 @@ run_gum_uninstaller() {
         return
     fi
 
-    # Extract package names from selected items (remove size info)
+    # Extract package names from selected items (remove size and age info)
+    # Format is: package_name (size) | age
     local package_names=$(echo "$selected" | awk '{print $1}')
     local package_count=$(echo "$package_names" | wc -l)
 
@@ -1129,15 +1154,34 @@ run_gum_uninstaller() {
         # Multiple packages - show list
         echo ""
         gum style --foreground 212 --bold "Selected Packages ($package_count):"
+        gum style --foreground 147 "═══════════════════════════════════════════════════════════════"
         echo ""
         echo "$package_names" | while IFS= read -r pkg; do
             local pkg_size=$(dpkg-query -W -f='${Installed-Size}' "$pkg" 2>/dev/null || echo "0")
-            if [[ $pkg_size -gt 1024 ]]; then
-                size_display=$(awk "BEGIN {printf \"%.1f MB\", $pkg_size/1024}")
+
+            # Convert to short format
+            if [[ $pkg_size -gt 1048576 ]]; then
+                size_display=$(awk "BEGIN {printf \"%.1fG\", $pkg_size/1048576}")
+            elif [[ $pkg_size -gt 1024 ]]; then
+                size_display=$(awk "BEGIN {printf \"%.0fM\", $pkg_size/1024}")
             else
-                size_display="${pkg_size} KB"
+                size_display="${pkg_size}K"
             fi
-            gum style --foreground 86 "  • $pkg ($size_display)"
+
+            # Get age indicator
+            local age_indicator="Recent"
+            local list_file="/var/lib/dpkg/info/${pkg}.list"
+            if [[ -f "$list_file" ]]; then
+                local file_time=$(stat -c %Y "$list_file" 2>/dev/null || echo "$(date +%s)")
+                local days_old=$(( ($(date +%s) - file_time) / 86400 ))
+                if [[ $days_old -gt 180 ]]; then
+                    age_indicator="Old"
+                elif [[ $days_old -gt 90 ]]; then
+                    age_indicator="Aged"
+                fi
+            fi
+
+            gum style --foreground 86 "  ☑ $(printf '%-40s' "$pkg") ($(printf '%6s' "$size_display")) | $age_indicator"
         done
 
         # Calculate total size
@@ -1148,13 +1192,13 @@ run_gum_uninstaller() {
             echo "$pkg_size"
         done | awk '{sum+=$1} END {
             if (sum > 1048576) {
-                printf "Total size: %.2f GB\n", sum/1048576
+                printf "%.1fG", sum/1048576
             } else if (sum > 1024) {
-                printf "Total size: %.1f MB\n", sum/1024
+                printf "%.0fM", sum/1024
             } else {
-                printf "Total size: %d KB\n", sum
+                printf "%dK", sum
             }
-        }' | xargs -I {} gum style --foreground 212 --bold "{}"
+        }' | xargs -I {} gum style --foreground 212 --bold "Total size to free: {}"
     fi
 
     echo ""
