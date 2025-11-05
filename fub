@@ -1134,52 +1134,39 @@ run_gum_uninstaller() {
     cat "$formatted_user" "$formatted_system" > "$formatted_list"
     rm -f "$formatted_user" "$formatted_system"
 
-    # Let user search and select multiple packages
-    gum style --foreground 147 "Step 1: Search packages (type to filter, Enter to continue)"
+    # Use fzf for fast search and multi-select
+    gum style --foreground 147 "🚀 Optimized with fzf - Type to search, Tab to select, Enter to confirm"
     gum style --foreground 147 "💡 Showing USER apps first, then SYSTEM apps"
     echo ""
 
-    # Strip color codes for display
-    local display_list=$(mktemp)
-    cat "$formatted_list" | cut -d'|' -f1 > "$display_list"
+    # Apply ANSI colors to lines for fzf display
+    local colored_list=$(mktemp)
+    while IFS='|' read -r line color_code; do
+        echo -e "\033[38;5;${color_code}m${line}\033[0m"
+    done < "$formatted_list" > "$colored_list"
 
-    local filtered
-    filtered=$(cat "$display_list" | gum filter --placeholder "Type to search packages..." --height 20 --no-limit)
-
-    rm -f "$display_list"
-
-    if [[ -z "$filtered" ]]; then
-        gum style --foreground 147 "No packages found or search cancelled."
-        rm -f "$temp_sizes" "$formatted_list"
-        return
-    fi
-
-    # Count filtered results
-    local filtered_count=$(echo "$filtered" | wc -l)
-
-    echo ""
-    gum style --foreground 82 "Found $filtered_count matching packages"
-    echo ""
-
-    # Enhanced UI with header
-    gum style --foreground 212 --bold "Select Apps to Remove"
-    gum style --foreground 212 "═══════════════════════════════════════════════════════════════"
-    gum style --foreground 147 "🔴 Old (>6mo) | 🟡 Aged (3-6mo) | 🟢 Recent (<3mo)"
-    gum style --foreground 147 "📦 USER (safe) | 🔧 SYSTEM (caution!)"
-    gum style --foreground 226 "▶ Navigate | Space to select | Enter to confirm"
-    echo ""
-
-    # Now let user multi-select from filtered results
+    # Use fzf for combined search + multi-select (much faster than gum)
     local selected
-    selected=$(echo "$filtered" | gum choose \
-        --no-limit \
-        --cursor "▶ " \
-        --selected-prefix "☑ " \
-        --unselected-prefix "☐ " \
-        --cursor.foreground="212" \
-        --height 20)
+    selected=$(cat "$colored_list" | fzf \
+        --multi \
+        --ansi \
+        --prompt="🔍 Search & Select > " \
+        --header="Tab/Shift-Tab: select | Ctrl-A: all | Ctrl-D: deselect | Enter: confirm
+─────────────────────────────────────────────────────────────────
+🔴 Old (>6mo) | 🟡 Aged (3-6mo) | 🟢 Recent (<3mo)
+📦 USER (safe to remove) | 🔧 SYSTEM (use caution!)
+💡 Use fuzzy search: 'firefox old' finds old Firefox packages" \
+        --bind 'ctrl-a:select-all' \
+        --bind 'ctrl-d:deselect-all' \
+        --bind 'ctrl-/:toggle-preview' \
+        --preview 'apt show $(echo {} | awk "{print \$1}") 2>/dev/null | head -25' \
+        --preview-window 'right:50%:wrap:hidden' \
+        --height 100% \
+        --layout reverse \
+        --border rounded \
+        --info inline)
 
-    rm -f "$temp_sizes" "$formatted_list"
+    rm -f "$temp_sizes" "$formatted_list" "$colored_list"
 
     if [[ -z "$selected" ]]; then
         gum style --foreground 147 "No packages selected."
