@@ -46,6 +46,7 @@ USAGE:
     $SCRIPT_NAME uninstall          Uninstall applications (requires gum)
     $SCRIPT_NAME debloat            Remove bloatware and unnecessary software (requires gum)
     $SCRIPT_NAME swap               Manage swap files for memory (requires gum)
+    $SCRIPT_NAME fonts              Install Nerd Fonts for terminal (requires gum)
     $SCRIPT_NAME configure          Configure cleanup profiles (requires gum)
     $SCRIPT_NAME --version          Show version information
     $SCRIPT_NAME --help             Show this help message
@@ -58,12 +59,14 @@ EXAMPLES:
     $SCRIPT_NAME uninstall          # Search and remove packages
     $SCRIPT_NAME debloat            # Remove snap, bloatware, orphans
     $SCRIPT_NAME swap               # Create/manage swap files
+    $SCRIPT_NAME fonts              # Install Nerd Fonts with icons
 
 NEW FEATURES (with gum):
     📁 Disk Analyzer - Interactively browse and clean large directories
     🗑️  App Uninstaller - Search and thoroughly remove applications
     💣 System Debloat - Remove snap packages, GNOME bloatware, orphaned packages
     💾 Swap Manager - Create and manage swap files (2-32GB options)
+    🎨 Nerd Fonts - Install developer fonts with icons and glyphs
     ⚙️  Profiles - Configure Desktop, Server, or Minimal cleanup modes
     ✨ Enhanced UI - Modern styling with progress indicators
 
@@ -820,7 +823,7 @@ show_gum_dashboard() {
         --cursor "→ " \
         --cursor-prefix "  " \
         --selected-prefix "  " \
-        --height 14 \
+        --height 15 \
         "🧹  Clean System (with preview)" \
         "🚀  Quick Clean (skip preview)" \
         "📊  Dry-Run Only (analyze)" \
@@ -828,6 +831,7 @@ show_gum_dashboard() {
         "🗑️  Uninstall Apps" \
         "💣  System Debloat" \
         "💾  Swap Manager" \
+        "🎨  Nerd Fonts" \
         "⚙️  Configure Profiles" \
         "ℹ️  System Status" \
         "❓  Help & Documentation" \
@@ -841,6 +845,7 @@ show_gum_dashboard() {
         "🗑️"*) run_gum_uninstaller ;;
         "💣"*) run_gum_debloat ;;
         "💾"*) run_gum_swap_manager ;;
+        "🎨"*) run_gum_font_installer ;;
         "⚙️"*) run_gum_configure_profiles ;;
         "ℹ️"*) show_gum_system_status ;;
         "❓"*) show_gum_help_screen ;;
@@ -1532,6 +1537,300 @@ show_swap_info() {
 }
 
 # =============================================================================
+# Nerd Font Installer (Terminal Enhancement)
+# =============================================================================
+
+run_gum_font_installer() {
+    clear
+    gum style --border double --border-foreground 212 --padding "1 2" --align center \
+        "$(gum style --bold --foreground 212 '🎨 NERD FONT INSTALLER')"
+
+    echo ""
+    gum style --foreground 147 "Install developer-focused Nerd Fonts with icons and glyphs."
+    gum style --foreground 147 "Perfect for terminal emulators and code editors."
+    echo ""
+
+    # Check current installed fonts
+    if [[ -d "$HOME/.local/share/fonts/NerdFonts" ]]; then
+        local installed_count=$(find "$HOME/.local/share/fonts/NerdFonts" -type d -mindepth 1 -maxdepth 1 | wc -l)
+        if [[ $installed_count -gt 0 ]]; then
+            gum style --foreground 82 "✅ You have $installed_count Nerd Font(s) installed"
+        else
+            gum style --foreground 147 "No Nerd Fonts installed yet"
+        fi
+    else
+        gum style --foreground 147 "No Nerd Fonts installed yet"
+    fi
+    echo ""
+
+    # Present options
+    local action
+    action=$(gum choose \
+        --header "Select action:" \
+        --cursor "→ " \
+        "Install new Nerd Font" \
+        "List installed fonts" \
+        "Remove installed fonts" \
+        "Cancel")
+
+    case "$action" in
+        "Install new Nerd Font")
+            install_nerd_font
+            ;;
+        "List installed fonts")
+            list_installed_fonts
+            ;;
+        "Remove installed fonts")
+            remove_nerd_fonts
+            ;;
+        "Cancel")
+            gum style --foreground 147 "Font installation cancelled."
+            ;;
+    esac
+}
+
+install_nerd_font() {
+    echo ""
+    gum style --foreground 212 --bold "Install Nerd Font"
+    echo ""
+
+    # Check dependencies
+    if ! command -v unzip &> /dev/null; then
+        gum style --foreground 226 "⚠️  Installing unzip..."
+        sudo apt install -y unzip
+    fi
+
+    if ! command -v curl &> /dev/null; then
+        gum style --foreground 226 "⚠️  Installing curl..."
+        sudo apt install -y curl
+    fi
+
+    # Fetch available fonts from GitHub API
+    gum spin --spinner dot --title "Fetching available Nerd Fonts..." -- \
+        curl -s https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest > /tmp/fub-nerdfonts.json
+
+    if [[ ! -s /tmp/fub-nerdfonts.json ]]; then
+        gum style --foreground 196 "❌ Failed to fetch font list from GitHub"
+        return
+    fi
+
+    # Extract font names from download URLs
+    local fonts=$(grep -oP '"browser_download_url":\s*"https://github.com/ryanoasis/nerd-fonts/releases/download/[^/]+/\K[^"]+\.zip' /tmp/fub-nerdfonts.json | sed 's/\.zip$//' | sort -u)
+
+    if [[ -z "$fonts" ]]; then
+        gum style --foreground 196 "❌ Could not parse font list"
+        return
+    fi
+
+    echo ""
+    gum style --foreground 147 "Select a font to install:"
+    echo ""
+
+    # Let user select a font
+    local selected_font
+    selected_font=$(echo "$fonts" | gum filter --placeholder "Search fonts..." --height 20)
+
+    if [[ -z "$selected_font" ]]; then
+        gum style --foreground 226 "No font selected."
+        return
+    fi
+
+    echo ""
+    gum style --foreground 212 --bold "Selected: $selected_font"
+    echo ""
+
+    # Get download URL
+    local download_url=$(grep -oP "\"browser_download_url\":\s*\"\K[^\"]*${selected_font}\.zip" /tmp/fub-nerdfonts.json | head -1)
+
+    if [[ -z "$download_url" ]]; then
+        gum style --foreground 196 "❌ Could not find download URL"
+        return
+    fi
+
+    # Confirm download
+    if ! gum confirm "Download and install $selected_font?"; then
+        gum style --foreground 226 "Installation cancelled."
+        return
+    fi
+
+    echo ""
+
+    # Create temp directory
+    local temp_dir="/tmp/fub-nerdfont-$$"
+    mkdir -p "$temp_dir"
+
+    # Download font
+    gum spin --spinner dot --title "Downloading $selected_font..." -- \
+        curl -L -o "$temp_dir/${selected_font}.zip" "$download_url" 2>&1 | tee /tmp/fub-fonts.log
+
+    if [[ ! -f "$temp_dir/${selected_font}.zip" ]]; then
+        gum style --foreground 196 "❌ Download failed"
+        rm -rf "$temp_dir"
+        return
+    fi
+
+    # Extract to temp
+    gum spin --spinner dot --title "Extracting font files..." -- \
+        unzip -q "$temp_dir/${selected_font}.zip" -d "$temp_dir/extracted" 2>&1 | tee -a /tmp/fub-fonts.log
+
+    # List font files
+    local font_files=$(find "$temp_dir/extracted" -type f \( -name "*.ttf" -o -name "*.otf" \) | sort)
+
+    if [[ -z "$font_files" ]]; then
+        gum style --foreground 196 "❌ No font files found in archive"
+        rm -rf "$temp_dir"
+        return
+    fi
+
+    echo ""
+    gum style --foreground 147 "Found $(echo "$font_files" | wc -l) font files"
+    echo ""
+
+    # Let user select which fonts to install
+    gum style --foreground 147 "Select font variants to install (Space to select, Enter to confirm):"
+    echo ""
+
+    local selected_files
+    selected_files=$(echo "$font_files" | xargs -n1 basename | gum choose \
+        --no-limit \
+        --cursor "→ " \
+        --selected-prefix "✓ " \
+        --unselected-prefix "○ " \
+        --height 20)
+
+    if [[ -z "$selected_files" ]]; then
+        gum style --foreground 226 "No font files selected."
+        rm -rf "$temp_dir"
+        return
+    fi
+
+    echo ""
+    gum style --foreground 212 --bold "Installing $(echo "$selected_files" | wc -l) font file(s)..."
+    echo ""
+
+    # Create installation directory
+    local install_dir="$HOME/.local/share/fonts/NerdFonts/$selected_font"
+    mkdir -p "$install_dir"
+
+    # Copy selected fonts
+    echo "$selected_files" | while IFS= read -r font_file; do
+        local source_path=$(find "$temp_dir/extracted" -name "$font_file" -type f)
+        if [[ -n "$source_path" ]]; then
+            cp "$source_path" "$install_dir/"
+            gum style --foreground 82 "✓ Installed: $font_file"
+        fi
+    done
+
+    # Update font cache
+    echo ""
+    gum spin --spinner dot --title "Updating font cache..." -- \
+        fc-cache -fv "$HOME/.local/share/fonts/NerdFonts" 2>&1 | tee -a /tmp/fub-fonts.log
+
+    # Cleanup
+    rm -rf "$temp_dir"
+
+    echo ""
+    gum style --border rounded --border-foreground 82 --padding "1 2" \
+        "$(gum style --foreground 82 --bold '✅ Font installed successfully!')"
+
+    echo ""
+    gum style --foreground 147 "Font location: $install_dir"
+    gum style --foreground 147 "Restart your terminal to use the new fonts."
+}
+
+list_installed_fonts() {
+    echo ""
+    gum style --foreground 212 --bold "Installed Nerd Fonts"
+    echo ""
+
+    if [[ ! -d "$HOME/.local/share/fonts/NerdFonts" ]]; then
+        gum style --foreground 147 "No Nerd Fonts directory found."
+        return
+    fi
+
+    local fonts_dir="$HOME/.local/share/fonts/NerdFonts"
+    local font_families=$(find "$fonts_dir" -type d -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
+
+    if [[ -z "$font_families" ]]; then
+        gum style --foreground 147 "No Nerd Fonts installed."
+        return
+    fi
+
+    gum style --foreground 147 "Installed font families:"
+    echo ""
+
+    echo "$font_families" | while IFS= read -r family; do
+        local file_count=$(find "$fonts_dir/$family" -type f \( -name "*.ttf" -o -name "*.otf" \) | wc -l)
+        gum style --foreground 86 "  • $family ($file_count files)"
+    done
+
+    echo ""
+    gum style --foreground 147 "Total storage: $(du -sh "$fonts_dir" 2>/dev/null | awk '{print $1}')"
+}
+
+remove_nerd_fonts() {
+    echo ""
+    gum style --foreground 226 --bold "⚠️  Remove Nerd Fonts"
+    echo ""
+
+    if [[ ! -d "$HOME/.local/share/fonts/NerdFonts" ]]; then
+        gum style --foreground 147 "No Nerd Fonts directory found."
+        return
+    fi
+
+    local fonts_dir="$HOME/.local/share/fonts/NerdFonts"
+    local font_families=$(find "$fonts_dir" -type d -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
+
+    if [[ -z "$font_families" ]]; then
+        gum style --foreground 147 "No Nerd Fonts installed."
+        return
+    fi
+
+    # Let user select fonts to remove
+    local selected
+    selected=$(echo "$font_families" | gum choose \
+        --no-limit \
+        --header "Select fonts to remove (Space to select, Enter to confirm):" \
+        --cursor "→ " \
+        --selected-prefix "✓ " \
+        --unselected-prefix "○ " \
+        --height 15)
+
+    if [[ -z "$selected" ]]; then
+        gum style --foreground 147 "No fonts selected for removal."
+        return
+    fi
+
+    echo ""
+    gum style --foreground 226 --bold "Fonts to be removed:"
+    echo "$selected" | while IFS= read -r font; do
+        echo "  • $font"
+    done
+    echo ""
+
+    if ! gum confirm "Remove selected fonts?"; then
+        gum style --foreground 147 "Removal cancelled."
+        return
+    fi
+
+    echo ""
+
+    # Remove selected fonts
+    echo "$selected" | while IFS= read -r font; do
+        rm -rf "$fonts_dir/$font"
+        gum style --foreground 82 "✓ Removed: $font"
+    done
+
+    # Update font cache
+    echo ""
+    gum spin --spinner dot --title "Updating font cache..." -- \
+        fc-cache -fv "$HOME/.local/share/fonts/NerdFonts" 2>&1 | tee /tmp/fub-fonts.log
+
+    echo ""
+    gum style --foreground 82 "✅ Selected fonts removed successfully!"
+}
+
+# =============================================================================
 # Configuration Profiles (New Feature)
 # =============================================================================
 
@@ -2055,6 +2354,15 @@ main() {
                 run_gum_swap_manager
             else
                 echo -e "${YELLOW}Swap Manager requires gum to be installed.${NC}"
+                show_gum_install_message
+                exit 1
+            fi
+            ;;
+        "fonts"|"font")
+            if [[ "$USE_GUM" == true ]]; then
+                run_gum_font_installer
+            else
+                echo -e "${YELLOW}Nerd Font Installer requires gum to be installed.${NC}"
                 show_gum_install_message
                 exit 1
             fi
