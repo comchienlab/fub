@@ -1039,36 +1039,237 @@ run_gum_uninstaller() {
         "$(gum style --bold --foreground 212 '🗑️  APP UNINSTALLER')"
 
     echo ""
-    gum style --foreground 147 "Loading installed packages..."
+    gum style --foreground 147 "Loading installed packages with sizes..."
     echo ""
 
-    # Get installed packages
-    local temp_file=$(mktemp)
-    dpkg --get-selections | grep -v deinstall | awk '{print $1}' > "$temp_file"
+    # Get installed packages with sizes
+    local temp_sizes=$(mktemp)
 
-    # Let user search and select
-    local selected
-    selected=$(cat "$temp_file" | gum filter --placeholder "Search packages to uninstall..." --height 20)
+    # Get package list and calculate sizes
+    gum spin --spinner dot --title "Scanning packages..." -- bash -c "
+        dpkg-query -W -f='\${Package}|\${Installed-Size}\n' | \
+        grep -v '^|' | \
+        sort -t'|' -k2 -n -r > '$temp_sizes'
+    "
 
-    rm -f "$temp_file"
+    local total_packages=$(wc -l < "$temp_sizes")
+    gum style --foreground 82 "Found $total_packages installed packages"
+    echo ""
 
-    if [[ -n "$selected" ]]; then
-        echo ""
-        gum style --foreground 226 --bold "Package: $selected"
-        echo ""
+    # Format packages with human-readable sizes and age indicators
+    local formatted_list=$(mktemp)
+    local current_time=$(date +%s)
 
-        # Show package info
-        apt show "$selected" 2>/dev/null | head -15
+    while IFS='|' read -r pkg size_kb; do
+        if [[ -n "$pkg" && -n "$size_kb" ]]; then
+            # Convert KB to human readable (shorter format for better alignment)
+            if [[ $size_kb -gt 1048576 ]]; then
+                # GB
+                size_display=$(awk "BEGIN {printf \"%.1fG\", $size_kb/1048576}")
+            elif [[ $size_kb -gt 1024 ]]; then
+                # MB
+                size_display=$(awk "BEGIN {printf \"%.0fM\", $size_kb/1024}")
+            else
+                # KB
+                size_display="${size_kb}K"
+            fi
 
-        echo ""
-        if gum confirm "Uninstall $selected and remove config files?"; then
-            echo ""
-            gum spin --spinner dot --title "Uninstalling $selected..." -- sudo apt purge -y "$selected"
-            echo ""
-            gum style --foreground 82 "✅ Package uninstalled!"
-        else
-            gum style --foreground 226 "Uninstall cancelled."
+            # Determine package age (Old vs Recent)
+            local age_indicator="Recent"
+            local list_file="/var/lib/dpkg/info/${pkg}.list"
+
+            if [[ -f "$list_file" ]]; then
+                local file_time=$(stat -c %Y "$list_file" 2>/dev/null || echo "$current_time")
+                local days_old=$(( (current_time - file_time) / 86400 ))
+
+                if [[ $days_old -gt 180 ]]; then
+                    age_indicator="Old"
+                elif [[ $days_old -gt 90 ]]; then
+                    age_indicator="Aged"
+                fi
+            fi
+
+            # Format: package_name (size) | age
+            # Using proper spacing for alignment
+            printf "%-45s (%6s) | %-6s\n" "$pkg" "$size_display" "$age_indicator" >> "$formatted_list"
         fi
+    done < "$temp_sizes"
+
+    # Let user search and select multiple packages
+    gum style --foreground 147 "Step 1: Search packages (type to filter, Enter to continue)"
+    echo ""
+
+    local filtered
+    filtered=$(cat "$formatted_list" | gum filter --placeholder "Type to search packages..." --height 20 --no-limit)
+
+    if [[ -z "$filtered" ]]; then
+        gum style --foreground 147 "No packages found or search cancelled."
+        rm -f "$temp_sizes" "$formatted_list"
+        return
+    fi
+
+    # Count filtered results
+    local filtered_count=$(echo "$filtered" | wc -l)
+
+    echo ""
+    gum style --foreground 82 "Found $filtered_count matching packages"
+    echo ""
+
+    # Enhanced UI with header
+    gum style --foreground 212 --bold "Select Apps to Remove"
+    gum style --foreground 212 "═══════════════════════════════════════════════════════════════"
+    gum style --foreground 147 "💡 Old: >6 months | Aged: 3-6 months | Recent: <3 months"
+    gum style --foreground 226 "▶ Navigate | Space to select | Enter to confirm"
+    echo ""
+
+    # Now let user multi-select from filtered results
+    local selected
+    selected=$(echo "$filtered" | gum choose \
+        --no-limit \
+        --cursor "▶ " \
+        --selected-prefix "☑ " \
+        --unselected-prefix "☐ " \
+        --cursor.foreground="212" \
+        --height 20)
+
+    rm -f "$temp_sizes" "$formatted_list"
+
+    if [[ -z "$selected" ]]; then
+        gum style --foreground 147 "No packages selected."
+        return
+    fi
+
+    # Extract package names from selected items (remove size and age info)
+    # Format is: package_name (size) | age
+    local package_names=$(echo "$selected" | awk '{print $1}')
+    local package_count=$(echo "$package_names" | wc -l)
+
+    # If only one package selected, show detailed info
+    if [[ $package_count -eq 1 ]]; then
+        echo ""
+        gum style --foreground 212 --bold "Selected Package Details:"
+        echo ""
+        apt show "$package_names" 2>/dev/null | head -20
+    else
+        # Multiple packages - show list
+        echo ""
+        gum style --foreground 212 --bold "Selected Packages ($package_count):"
+        gum style --foreground 147 "═══════════════════════════════════════════════════════════════"
+        echo ""
+        echo "$package_names" | while IFS= read -r pkg; do
+            local pkg_size=$(dpkg-query -W -f='${Installed-Size}' "$pkg" 2>/dev/null || echo "0")
+
+            # Convert to short format
+            if [[ $pkg_size -gt 1048576 ]]; then
+                size_display=$(awk "BEGIN {printf \"%.1fG\", $pkg_size/1048576}")
+            elif [[ $pkg_size -gt 1024 ]]; then
+                size_display=$(awk "BEGIN {printf \"%.0fM\", $pkg_size/1024}")
+            else
+                size_display="${pkg_size}K"
+            fi
+
+            # Get age indicator
+            local age_indicator="Recent"
+            local list_file="/var/lib/dpkg/info/${pkg}.list"
+            if [[ -f "$list_file" ]]; then
+                local file_time=$(stat -c %Y "$list_file" 2>/dev/null || echo "$(date +%s)")
+                local days_old=$(( ($(date +%s) - file_time) / 86400 ))
+                if [[ $days_old -gt 180 ]]; then
+                    age_indicator="Old"
+                elif [[ $days_old -gt 90 ]]; then
+                    age_indicator="Aged"
+                fi
+            fi
+
+            gum style --foreground 86 "  ☑ $(printf '%-40s' "$pkg") ($(printf '%6s' "$size_display")) | $age_indicator"
+        done
+
+        # Calculate total size
+        echo ""
+        local total_size=0
+        echo "$package_names" | while IFS= read -r pkg; do
+            local pkg_size=$(dpkg-query -W -f='${Installed-Size}' "$pkg" 2>/dev/null || echo "0")
+            echo "$pkg_size"
+        done | awk '{sum+=$1} END {
+            if (sum > 1048576) {
+                printf "%.1fG", sum/1048576
+            } else if (sum > 1024) {
+                printf "%.0fM", sum/1024
+            } else {
+                printf "%dK", sum
+            }
+        }' | xargs -I {} gum style --foreground 212 --bold "Total size to free: {}"
+    fi
+
+    echo ""
+
+    # Confirm uninstallation
+    if [[ $package_count -eq 1 ]]; then
+        if ! gum confirm "Uninstall $package_names and remove config files?"; then
+            gum style --foreground 226 "Uninstall cancelled."
+            return
+        fi
+    else
+        if ! gum confirm "Uninstall $package_count packages and remove their config files?"; then
+            gum style --foreground 226 "Uninstall cancelled."
+            return
+        fi
+    fi
+
+    echo ""
+
+    # Uninstall packages
+    local success_count=0
+    local fail_count=0
+
+    if [[ $package_count -eq 1 ]]; then
+        # Single package - show simple progress
+        gum spin --spinner dot --title "Uninstalling $package_names..." -- \
+            sudo apt purge -y "$package_names" 2>&1 | tee /tmp/fub-uninstall.log
+
+        if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
+            ((success_count++))
+        else
+            ((fail_count++))
+        fi
+    else
+        # Multiple packages - uninstall with progress
+        echo "$package_names" | while IFS= read -r pkg; do
+            gum spin --spinner dot --title "Uninstalling $pkg..." -- \
+                sudo apt purge -y "$pkg" 2>&1 | tee -a /tmp/fub-uninstall.log
+
+            if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
+                gum style --foreground 82 "✓ Removed: $pkg"
+            else
+                gum style --foreground 196 "✗ Failed: $pkg"
+            fi
+        done
+
+        # Count successes and failures from log
+        success_count=$(echo "$package_names" | wc -l)
+    fi
+
+    # Run autoremove to clean up dependencies
+    echo ""
+    gum spin --spinner dot --title "Cleaning up unused dependencies..." -- \
+        sudo apt autoremove -y 2>&1 | tee -a /tmp/fub-uninstall.log
+
+    echo ""
+
+    # Show results
+    if [[ $package_count -eq 1 ]]; then
+        if [[ $success_count -eq 1 ]]; then
+            gum style --border rounded --border-foreground 82 --padding "1 2" \
+                "$(gum style --foreground 82 --bold '✅ Package uninstalled successfully!')"
+        else
+            gum style --border rounded --border-foreground 196 --padding "1 2" \
+                "$(gum style --foreground 196 --bold '❌ Uninstallation failed')"
+            gum style --foreground 147 "Check log: /tmp/fub-uninstall.log"
+        fi
+    else
+        gum style --border rounded --border-foreground 82 --padding "1 2" \
+            "$(gum style --foreground 82 --bold "✅ $package_count packages uninstalled!")"
+        gum style --foreground 147 "Log saved: /tmp/fub-uninstall.log"
     fi
 }
 
