@@ -44,6 +44,9 @@ USAGE:
     $SCRIPT_NAME clean --force      Clean without confirmation prompts
     $SCRIPT_NAME analyze            Analyze disk usage (requires gum)
     $SCRIPT_NAME uninstall          Uninstall applications (requires gum)
+    $SCRIPT_NAME debloat            Remove bloatware and unnecessary software (requires gum)
+    $SCRIPT_NAME swap               Manage swap files for memory (requires gum)
+    $SCRIPT_NAME fonts              Install Nerd Fonts for terminal (requires gum)
     $SCRIPT_NAME configure          Configure cleanup profiles (requires gum)
     $SCRIPT_NAME --version          Show version information
     $SCRIPT_NAME --help             Show this help message
@@ -54,10 +57,16 @@ EXAMPLES:
     $SCRIPT_NAME clean              # Execute cleanup safely
     $SCRIPT_NAME analyze            # Browse largest directories
     $SCRIPT_NAME uninstall          # Search and remove packages
+    $SCRIPT_NAME debloat            # Remove snap, bloatware, orphans
+    $SCRIPT_NAME swap               # Create/manage swap files
+    $SCRIPT_NAME fonts              # Install Nerd Fonts with icons
 
 NEW FEATURES (with gum):
     📁 Disk Analyzer - Interactively browse and clean large directories
     🗑️  App Uninstaller - Search and thoroughly remove applications
+    💣 System Debloat - Remove snap packages, GNOME bloatware, orphaned packages
+    💾 Swap Manager - Create and manage swap files (2-32GB options)
+    🎨 Nerd Fonts - Install developer fonts with icons and glyphs
     ⚙️  Profiles - Configure Desktop, Server, or Minimal cleanup modes
     ✨ Enhanced UI - Modern styling with progress indicators
 
@@ -814,12 +823,15 @@ show_gum_dashboard() {
         --cursor "→ " \
         --cursor-prefix "  " \
         --selected-prefix "  " \
-        --height 12 \
+        --height 15 \
         "🧹  Clean System (with preview)" \
         "🚀  Quick Clean (skip preview)" \
         "📊  Dry-Run Only (analyze)" \
         "📁  Disk Analyzer" \
         "🗑️  Uninstall Apps" \
+        "💣  System Debloat" \
+        "💾  Swap Manager" \
+        "🎨  Nerd Fonts" \
         "⚙️  Configure Profiles" \
         "ℹ️  System Status" \
         "❓  Help & Documentation" \
@@ -831,6 +843,9 @@ show_gum_dashboard() {
         "📊"*) run_gum_dry_run_only ;;
         "📁"*) run_gum_disk_analyzer ;;
         "🗑️"*) run_gum_uninstaller ;;
+        "💣"*) run_gum_debloat ;;
+        "💾"*) run_gum_swap_manager ;;
+        "🎨"*) run_gum_font_installer ;;
         "⚙️"*) run_gum_configure_profiles ;;
         "ℹ️"*) show_gum_system_status ;;
         "❓"*) show_gum_help_screen ;;
@@ -1055,6 +1070,764 @@ run_gum_uninstaller() {
             gum style --foreground 226 "Uninstall cancelled."
         fi
     fi
+}
+
+# =============================================================================
+# System Debloat (Remove Unnecessary Software)
+# =============================================================================
+
+run_gum_debloat() {
+    clear
+    gum style --border double --border-foreground 212 --padding "1 2" --align center \
+        "$(gum style --bold --foreground 212 '🗑️  SYSTEM DEBLOAT')"
+
+    echo ""
+    gum style --foreground 147 "Remove unnecessary software and bloatware from your system."
+    gum style --foreground 226 "⚠️  This will permanently remove selected components."
+    echo ""
+
+    # Check what's installed
+    local has_snap=false
+    local has_gnome_games=false
+    local has_gnome_software=false
+    local has_bluetooth=false
+    local has_orphans=false
+
+    # Detect installed bloatware
+    if command -v snap &> /dev/null; then
+        has_snap=true
+    fi
+    if dpkg -l | grep -q "gnome-games"; then
+        has_gnome_games=true
+    fi
+    if dpkg -l | grep -q "gnome-software"; then
+        has_gnome_software=true
+    fi
+    if systemctl is-enabled bluetooth &> /dev/null 2>&1; then
+        has_bluetooth=true
+    fi
+    if command -v deborphan &> /dev/null && [[ -n "$(sudo deborphan 2>/dev/null)" ]]; then
+        has_orphans=true
+    fi
+
+    # Build options list
+    local options=()
+
+    if [[ "$has_snap" == true ]]; then
+        options+=("Snap packages (snapd)")
+    fi
+    if [[ "$has_gnome_games" == true ]]; then
+        options+=("GNOME Games")
+    fi
+    if [[ "$has_gnome_software" == true ]]; then
+        options+=("GNOME Software Center")
+    fi
+    if [[ "$has_bluetooth" == true ]]; then
+        options+=("Bluetooth service (disable)")
+    fi
+    options+=("Orphaned packages (unused dependencies)")
+
+    if [[ ${#options[@]} -eq 0 ]]; then
+        gum style --foreground 82 "✅ No bloatware detected! Your system is already clean."
+        return
+    fi
+
+    # Let user select what to remove
+    local selected
+    selected=$(printf '%s\n' "${options[@]}" | gum choose \
+        --no-limit \
+        --header "Select components to remove (Space to select, Enter to confirm):" \
+        --cursor "→ " \
+        --selected-prefix "✓ " \
+        --unselected-prefix "○ " \
+        --height 15)
+
+    if [[ -z "$selected" ]]; then
+        gum style --foreground 226 "No components selected. Debloat cancelled."
+        return
+    fi
+
+    echo ""
+    gum style --foreground 212 --bold "Selected for removal:"
+    echo "$selected" | while IFS= read -r line; do
+        echo "  • $line"
+    done
+    echo ""
+
+    # Show size estimation
+    gum style --foreground 147 "Estimating space savings..."
+    local total_size=0
+
+    if echo "$selected" | grep -q "Snap packages"; then
+        local snap_size=$(du -sh /var/lib/snapd 2>/dev/null | awk '{print $1}' || echo "0")
+        gum style --foreground 86 "  Snap packages: ~$snap_size"
+    fi
+    if echo "$selected" | grep -q "GNOME Games"; then
+        gum style --foreground 86 "  GNOME Games: ~50-100 MB"
+    fi
+    if echo "$selected" | grep -q "GNOME Software"; then
+        gum style --foreground 86 "  GNOME Software: ~20-50 MB"
+    fi
+    if echo "$selected" | grep -q "Orphaned"; then
+        local orphan_count=$(sudo deborphan 2>/dev/null | wc -l || echo "0")
+        gum style --foreground 86 "  Orphaned packages: $orphan_count packages"
+    fi
+
+    echo ""
+
+    # Confirm before proceeding
+    if ! gum confirm "Proceed with debloating?"; then
+        gum style --foreground 226 "Debloat cancelled."
+        return
+    fi
+
+    echo ""
+    gum style --foreground 212 --bold "Starting debloat process..."
+    echo ""
+
+    # Execute removals
+    local errors=0
+
+    # Remove Snap
+    if echo "$selected" | grep -q "Snap packages"; then
+        gum style --foreground 147 "Removing Snap packages..."
+
+        # Remove all snap packages first
+        if snap list &> /dev/null; then
+            snap list 2>/dev/null | tail -n +2 | awk '{print $1}' | while read -r snapname; do
+                gum spin --spinner dot --title "Removing snap: $snapname" -- \
+                    sudo snap remove "$snapname" 2>&1 | tee /tmp/fub-debloat.log || ((errors++))
+            done
+        fi
+
+        # Remove snapd
+        gum spin --spinner dot --title "Removing snapd..." -- \
+            sudo apt purge -y snapd 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+
+        # Remove snap directories
+        sudo rm -rf /snap /var/snap /var/lib/snapd ~/snap 2>/dev/null
+
+        gum style --foreground 82 "✅ Snap removed"
+        echo ""
+    fi
+
+    # Remove GNOME Games
+    if echo "$selected" | grep -q "GNOME Games"; then
+        gum spin --spinner dot --title "Removing GNOME Games..." -- \
+            sudo apt purge -y gnome-games 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+        gum style --foreground 82 "✅ GNOME Games removed"
+        echo ""
+    fi
+
+    # Remove GNOME Software
+    if echo "$selected" | grep -q "GNOME Software"; then
+        gum spin --spinner dot --title "Removing GNOME Software Center..." -- \
+            sudo apt purge -y gnome-software 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+        gum style --foreground 82 "✅ GNOME Software Center removed"
+        echo ""
+    fi
+
+    # Disable Bluetooth
+    if echo "$selected" | grep -q "Bluetooth service"; then
+        gum spin --spinner dot --title "Disabling Bluetooth service..." -- \
+            sudo systemctl disable bluetooth 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+        sudo systemctl stop bluetooth 2>&1 | tee -a /tmp/fub-debloat.log || true
+        gum style --foreground 82 "✅ Bluetooth service disabled"
+        echo ""
+    fi
+
+    # Remove orphaned packages
+    if echo "$selected" | grep -q "Orphaned"; then
+        if command -v deborphan &> /dev/null; then
+            local orphans=$(sudo deborphan 2>/dev/null)
+            if [[ -n "$orphans" ]]; then
+                gum spin --spinner dot --title "Removing orphaned packages..." -- \
+                    sudo apt purge -y $(sudo deborphan) 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+                gum style --foreground 82 "✅ Orphaned packages removed"
+            else
+                gum style --foreground 147 "No orphaned packages found"
+            fi
+        else
+            gum style --foreground 226 "⚠️  deborphan not installed, skipping orphan removal"
+            gum style --foreground 147 "Install with: sudo apt install deborphan"
+        fi
+        echo ""
+    fi
+
+    # Clean up
+    gum spin --spinner dot --title "Cleaning up..." -- \
+        sudo apt autoremove -y 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+
+    echo ""
+
+    if [[ $errors -eq 0 ]]; then
+        gum style --border rounded --border-foreground 82 --padding "1 2" \
+            "$(gum style --foreground 82 --bold '✅ Debloat completed successfully!')"
+    else
+        gum style --border rounded --border-foreground 226 --padding "1 2" \
+            "$(gum style --foreground 226 --bold '⚠️  Debloat completed with some errors')"
+        gum style --foreground 147 "Check log: /tmp/fub-debloat.log"
+    fi
+
+    echo ""
+    gum style --foreground 147 "Space reclaimed: $(df -h / | tail -1 | awk '{print $4}') available"
+}
+
+# =============================================================================
+# Swap File Manager (Memory Management)
+# =============================================================================
+
+run_gum_swap_manager() {
+    clear
+    gum style --border double --border-foreground 212 --padding "1 2" --align center \
+        "$(gum style --bold --foreground 212 '💾 SWAP FILE MANAGER')"
+
+    echo ""
+    gum style --foreground 147 "Manage swap files for systems with limited RAM."
+    echo ""
+
+    # Show current swap status
+    gum style --foreground 212 --bold "Current Memory Status:"
+    echo ""
+    free -h | grep -E '^Mem:|^Swap:' | while IFS= read -r line; do
+        echo "  $line"
+    done
+    echo ""
+
+    # Check if swap exists
+    local has_swap=false
+    local swap_size=""
+    local swap_file=""
+
+    if swapon --show | grep -q "/swapfile"; then
+        has_swap=true
+        swap_file="/swapfile"
+        swap_size=$(swapon --show | grep "/swapfile" | awk '{print $3}')
+    elif swapon --show | tail -n +2 | grep -q "/"; then
+        has_swap=true
+        swap_file=$(swapon --show | tail -n +2 | awk '{print $1}' | head -1)
+        swap_size=$(swapon --show | tail -n +2 | awk '{print $3}' | head -1)
+    fi
+
+    if [[ "$has_swap" == true ]]; then
+        gum style --foreground 82 "✅ Swap file detected: $swap_file ($swap_size)"
+        echo ""
+    else
+        gum style --foreground 226 "⚠️  No swap file detected"
+        echo ""
+    fi
+
+    # Present options
+    local action
+    if [[ "$has_swap" == true ]]; then
+        action=$(gum choose \
+            --header "Select action:" \
+            --cursor "→ " \
+            "Create new swap file (replaces existing)" \
+            "Disable and remove swap" \
+            "Show detailed swap info" \
+            "Cancel")
+    else
+        action=$(gum choose \
+            --header "Select action:" \
+            --cursor "→ " \
+            "Create swap file" \
+            "Show memory info" \
+            "Cancel")
+    fi
+
+    case "$action" in
+        *"Create"*)
+            create_swap_file
+            ;;
+        *"Disable"*)
+            remove_swap_file "$swap_file"
+            ;;
+        *"Show"*)
+            show_swap_info
+            ;;
+        "Cancel")
+            gum style --foreground 147 "Swap management cancelled."
+            ;;
+    esac
+}
+
+create_swap_file() {
+    echo ""
+    gum style --foreground 212 --bold "Create Swap File"
+    echo ""
+
+    # Recommend swap size based on RAM
+    local total_ram_mb=$(free -m | awk '/^Mem:/ {print $2}')
+    local recommended_gb=4
+
+    if [[ $total_ram_mb -lt 2048 ]]; then
+        recommended_gb=4
+    elif [[ $total_ram_mb -lt 4096 ]]; then
+        recommended_gb=8
+    elif [[ $total_ram_mb -lt 8192 ]]; then
+        recommended_gb=8
+    else
+        recommended_gb=16
+    fi
+
+    gum style --foreground 147 "Total RAM: $(free -h | awk '/^Mem:/ {print $2}')"
+    gum style --foreground 147 "Recommended swap: ${recommended_gb}GB"
+    echo ""
+
+    # Let user choose size
+    local size_choice
+    size_choice=$(gum choose \
+        --header "Select swap file size:" \
+        --cursor "→ " \
+        "2GB" \
+        "4GB (recommended for <4GB RAM)" \
+        "8GB (recommended for 4-8GB RAM)" \
+        "16GB (recommended for >8GB RAM)" \
+        "32GB (for intensive workloads)" \
+        "Custom size" \
+        "Cancel")
+
+    if [[ "$size_choice" == "Cancel" ]]; then
+        return
+    fi
+
+    local swap_size_gb
+    if [[ "$size_choice" == "Custom size" ]]; then
+        swap_size_gb=$(gum input --placeholder "Enter size in GB (e.g., 4)")
+
+        # Validate input
+        if ! [[ "$swap_size_gb" =~ ^[0-9]+$ ]]; then
+            gum style --foreground 196 "❌ Invalid input. Must be a number."
+            return
+        fi
+
+        if [[ $swap_size_gb -lt 1 ]] || [[ $swap_size_gb -gt 64 ]]; then
+            gum style --foreground 196 "❌ Size must be between 1 and 64 GB."
+            return
+        fi
+    else
+        swap_size_gb=$(echo "$size_choice" | grep -oP '^\d+')
+    fi
+
+    echo ""
+    gum style --foreground 212 --bold "Creating ${swap_size_gb}GB swap file..."
+    echo ""
+
+    # Confirm
+    if ! gum confirm "Create ${swap_size_gb}GB swap file at /swapfile?"; then
+        gum style --foreground 226 "Swap creation cancelled."
+        return
+    fi
+
+    echo ""
+
+    # Disable existing swap
+    if swapon --show | grep -q "/swapfile"; then
+        gum spin --spinner dot --title "Disabling existing swap..." -- \
+            sudo swapoff /swapfile 2>&1 | tee /tmp/fub-swap.log || true
+        sudo rm -f /swapfile 2>/dev/null || true
+    fi
+
+    # Create swap file using fallocate (faster than dd)
+    gum style --foreground 147 "Creating swap file (this may take a moment)..."
+    if ! sudo fallocate -l ${swap_size_gb}G /swapfile 2>/dev/null; then
+        # Fallback to dd if fallocate fails
+        gum spin --spinner dot --title "Creating swap file with dd..." -- \
+            sudo dd if=/dev/zero of=/swapfile bs=1M count=$((swap_size_gb * 1024)) status=progress 2>&1 | tee -a /tmp/fub-swap.log
+    else
+        gum style --foreground 82 "✅ Swap file allocated"
+    fi
+
+    # Set permissions
+    gum spin --spinner dot --title "Setting permissions..." -- \
+        sudo chmod 600 /swapfile 2>&1 | tee -a /tmp/fub-swap.log
+
+    # Format as swap
+    gum spin --spinner dot --title "Formatting as swap..." -- \
+        sudo mkswap /swapfile 2>&1 | tee -a /tmp/fub-swap.log
+
+    # Enable swap
+    gum spin --spinner dot --title "Enabling swap..." -- \
+        sudo swapon /swapfile 2>&1 | tee -a /tmp/fub-swap.log
+
+    # Add to fstab if not present
+    if ! grep -q "/swapfile" /etc/fstab 2>/dev/null; then
+        gum spin --spinner dot --title "Adding to /etc/fstab..." -- \
+            bash -c 'echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab' 2>&1 | tee -a /tmp/fub-swap.log
+        gum style --foreground 82 "✅ Added to /etc/fstab for persistence"
+    else
+        gum style --foreground 147 "Entry already exists in /etc/fstab"
+    fi
+
+    echo ""
+    gum style --border rounded --border-foreground 82 --padding "1 2" \
+        "$(gum style --foreground 82 --bold '✅ Swap file created successfully!')"
+
+    echo ""
+    gum style --foreground 212 --bold "New Memory Status:"
+    echo ""
+    free -h | grep -E '^Mem:|^Swap:' | while IFS= read -r line; do
+        echo "  $line"
+    done
+}
+
+remove_swap_file() {
+    local swap_file=$1
+    echo ""
+    gum style --foreground 226 --bold "⚠️  Remove Swap File"
+    echo ""
+
+    gum style --foreground 147 "This will disable and remove: $swap_file"
+    echo ""
+
+    if ! gum confirm "Are you sure you want to remove the swap file?"; then
+        gum style --foreground 147 "Swap removal cancelled."
+        return
+    fi
+
+    echo ""
+
+    # Disable swap
+    gum spin --spinner dot --title "Disabling swap..." -- \
+        sudo swapoff "$swap_file" 2>&1 | tee /tmp/fub-swap.log
+
+    # Remove swap file
+    gum spin --spinner dot --title "Removing swap file..." -- \
+        sudo rm -f "$swap_file" 2>&1 | tee -a /tmp/fub-swap.log
+
+    # Remove from fstab
+    if grep -q "$swap_file" /etc/fstab 2>/dev/null; then
+        gum spin --spinner dot --title "Removing from /etc/fstab..." -- \
+            sudo sed -i "\|$swap_file|d" /etc/fstab 2>&1 | tee -a /tmp/fub-swap.log
+        gum style --foreground 82 "✅ Removed from /etc/fstab"
+    fi
+
+    echo ""
+    gum style --border rounded --border-foreground 82 --padding "1 2" \
+        "$(gum style --foreground 82 --bold '✅ Swap file removed successfully!')"
+
+    echo ""
+    gum style --foreground 212 --bold "New Memory Status:"
+    echo ""
+    free -h | grep -E '^Mem:|^Swap:' | while IFS= read -r line; do
+        echo "  $line"
+    done
+}
+
+show_swap_info() {
+    echo ""
+    gum style --foreground 212 --bold "Detailed Swap Information"
+    echo ""
+
+    gum style --foreground 147 "Memory Status:"
+    free -h
+    echo ""
+
+    gum style --foreground 147 "Active Swap Devices:"
+    swapon --show
+    echo ""
+
+    gum style --foreground 147 "Swap Configuration in /etc/fstab:"
+    grep -E "swap|swapfile" /etc/fstab 2>/dev/null || echo "  No swap entries found"
+    echo ""
+
+    gum style --foreground 147 "Disk Space at /:"
+    df -h / | tail -1
+}
+
+# =============================================================================
+# Nerd Font Installer (Terminal Enhancement)
+# =============================================================================
+
+run_gum_font_installer() {
+    clear
+    gum style --border double --border-foreground 212 --padding "1 2" --align center \
+        "$(gum style --bold --foreground 212 '🎨 NERD FONT INSTALLER')"
+
+    echo ""
+    gum style --foreground 147 "Install developer-focused Nerd Fonts with icons and glyphs."
+    gum style --foreground 147 "Perfect for terminal emulators and code editors."
+    echo ""
+
+    # Check current installed fonts
+    if [[ -d "$HOME/.local/share/fonts/NerdFonts" ]]; then
+        local installed_count=$(find "$HOME/.local/share/fonts/NerdFonts" -type d -mindepth 1 -maxdepth 1 | wc -l)
+        if [[ $installed_count -gt 0 ]]; then
+            gum style --foreground 82 "✅ You have $installed_count Nerd Font(s) installed"
+        else
+            gum style --foreground 147 "No Nerd Fonts installed yet"
+        fi
+    else
+        gum style --foreground 147 "No Nerd Fonts installed yet"
+    fi
+    echo ""
+
+    # Present options
+    local action
+    action=$(gum choose \
+        --header "Select action:" \
+        --cursor "→ " \
+        "Install new Nerd Font" \
+        "List installed fonts" \
+        "Remove installed fonts" \
+        "Cancel")
+
+    case "$action" in
+        "Install new Nerd Font")
+            install_nerd_font
+            ;;
+        "List installed fonts")
+            list_installed_fonts
+            ;;
+        "Remove installed fonts")
+            remove_nerd_fonts
+            ;;
+        "Cancel")
+            gum style --foreground 147 "Font installation cancelled."
+            ;;
+    esac
+}
+
+install_nerd_font() {
+    echo ""
+    gum style --foreground 212 --bold "Install Nerd Font"
+    echo ""
+
+    # Check dependencies
+    if ! command -v unzip &> /dev/null; then
+        gum style --foreground 226 "⚠️  Installing unzip..."
+        sudo apt install -y unzip
+    fi
+
+    if ! command -v curl &> /dev/null; then
+        gum style --foreground 226 "⚠️  Installing curl..."
+        sudo apt install -y curl
+    fi
+
+    # Fetch available fonts from GitHub API
+    gum spin --spinner dot --title "Fetching available Nerd Fonts..." -- \
+        curl -s https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest > /tmp/fub-nerdfonts.json
+
+    if [[ ! -s /tmp/fub-nerdfonts.json ]]; then
+        gum style --foreground 196 "❌ Failed to fetch font list from GitHub"
+        return
+    fi
+
+    # Extract font names from download URLs
+    local fonts=$(grep -oP '"browser_download_url":\s*"https://github.com/ryanoasis/nerd-fonts/releases/download/[^/]+/\K[^"]+\.zip' /tmp/fub-nerdfonts.json | sed 's/\.zip$//' | sort -u)
+
+    if [[ -z "$fonts" ]]; then
+        gum style --foreground 196 "❌ Could not parse font list"
+        return
+    fi
+
+    echo ""
+    gum style --foreground 147 "Select a font to install:"
+    echo ""
+
+    # Let user select a font
+    local selected_font
+    selected_font=$(echo "$fonts" | gum filter --placeholder "Search fonts..." --height 20)
+
+    if [[ -z "$selected_font" ]]; then
+        gum style --foreground 226 "No font selected."
+        return
+    fi
+
+    echo ""
+    gum style --foreground 212 --bold "Selected: $selected_font"
+    echo ""
+
+    # Get download URL
+    local download_url=$(grep -oP "\"browser_download_url\":\s*\"\K[^\"]*${selected_font}\.zip" /tmp/fub-nerdfonts.json | head -1)
+
+    if [[ -z "$download_url" ]]; then
+        gum style --foreground 196 "❌ Could not find download URL"
+        return
+    fi
+
+    # Confirm download
+    if ! gum confirm "Download and install $selected_font?"; then
+        gum style --foreground 226 "Installation cancelled."
+        return
+    fi
+
+    echo ""
+
+    # Create temp directory
+    local temp_dir="/tmp/fub-nerdfont-$$"
+    mkdir -p "$temp_dir"
+
+    # Download font
+    gum spin --spinner dot --title "Downloading $selected_font..." -- \
+        curl -L -o "$temp_dir/${selected_font}.zip" "$download_url" 2>&1 | tee /tmp/fub-fonts.log
+
+    if [[ ! -f "$temp_dir/${selected_font}.zip" ]]; then
+        gum style --foreground 196 "❌ Download failed"
+        rm -rf "$temp_dir"
+        return
+    fi
+
+    # Extract to temp
+    gum spin --spinner dot --title "Extracting font files..." -- \
+        unzip -q "$temp_dir/${selected_font}.zip" -d "$temp_dir/extracted" 2>&1 | tee -a /tmp/fub-fonts.log
+
+    # List font files
+    local font_files=$(find "$temp_dir/extracted" -type f \( -name "*.ttf" -o -name "*.otf" \) | sort)
+
+    if [[ -z "$font_files" ]]; then
+        gum style --foreground 196 "❌ No font files found in archive"
+        rm -rf "$temp_dir"
+        return
+    fi
+
+    echo ""
+    gum style --foreground 147 "Found $(echo "$font_files" | wc -l) font files"
+    echo ""
+
+    # Let user select which fonts to install
+    gum style --foreground 147 "Select font variants to install (Space to select, Enter to confirm):"
+    echo ""
+
+    local selected_files
+    selected_files=$(echo "$font_files" | xargs -n1 basename | gum choose \
+        --no-limit \
+        --cursor "→ " \
+        --selected-prefix "✓ " \
+        --unselected-prefix "○ " \
+        --height 20)
+
+    if [[ -z "$selected_files" ]]; then
+        gum style --foreground 226 "No font files selected."
+        rm -rf "$temp_dir"
+        return
+    fi
+
+    echo ""
+    gum style --foreground 212 --bold "Installing $(echo "$selected_files" | wc -l) font file(s)..."
+    echo ""
+
+    # Create installation directory
+    local install_dir="$HOME/.local/share/fonts/NerdFonts/$selected_font"
+    mkdir -p "$install_dir"
+
+    # Copy selected fonts
+    echo "$selected_files" | while IFS= read -r font_file; do
+        local source_path=$(find "$temp_dir/extracted" -name "$font_file" -type f)
+        if [[ -n "$source_path" ]]; then
+            cp "$source_path" "$install_dir/"
+            gum style --foreground 82 "✓ Installed: $font_file"
+        fi
+    done
+
+    # Update font cache
+    echo ""
+    gum spin --spinner dot --title "Updating font cache..." -- \
+        fc-cache -fv "$HOME/.local/share/fonts/NerdFonts" 2>&1 | tee -a /tmp/fub-fonts.log
+
+    # Cleanup
+    rm -rf "$temp_dir"
+
+    echo ""
+    gum style --border rounded --border-foreground 82 --padding "1 2" \
+        "$(gum style --foreground 82 --bold '✅ Font installed successfully!')"
+
+    echo ""
+    gum style --foreground 147 "Font location: $install_dir"
+    gum style --foreground 147 "Restart your terminal to use the new fonts."
+}
+
+list_installed_fonts() {
+    echo ""
+    gum style --foreground 212 --bold "Installed Nerd Fonts"
+    echo ""
+
+    if [[ ! -d "$HOME/.local/share/fonts/NerdFonts" ]]; then
+        gum style --foreground 147 "No Nerd Fonts directory found."
+        return
+    fi
+
+    local fonts_dir="$HOME/.local/share/fonts/NerdFonts"
+    local font_families=$(find "$fonts_dir" -type d -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
+
+    if [[ -z "$font_families" ]]; then
+        gum style --foreground 147 "No Nerd Fonts installed."
+        return
+    fi
+
+    gum style --foreground 147 "Installed font families:"
+    echo ""
+
+    echo "$font_families" | while IFS= read -r family; do
+        local file_count=$(find "$fonts_dir/$family" -type f \( -name "*.ttf" -o -name "*.otf" \) | wc -l)
+        gum style --foreground 86 "  • $family ($file_count files)"
+    done
+
+    echo ""
+    gum style --foreground 147 "Total storage: $(du -sh "$fonts_dir" 2>/dev/null | awk '{print $1}')"
+}
+
+remove_nerd_fonts() {
+    echo ""
+    gum style --foreground 226 --bold "⚠️  Remove Nerd Fonts"
+    echo ""
+
+    if [[ ! -d "$HOME/.local/share/fonts/NerdFonts" ]]; then
+        gum style --foreground 147 "No Nerd Fonts directory found."
+        return
+    fi
+
+    local fonts_dir="$HOME/.local/share/fonts/NerdFonts"
+    local font_families=$(find "$fonts_dir" -type d -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
+
+    if [[ -z "$font_families" ]]; then
+        gum style --foreground 147 "No Nerd Fonts installed."
+        return
+    fi
+
+    # Let user select fonts to remove
+    local selected
+    selected=$(echo "$font_families" | gum choose \
+        --no-limit \
+        --header "Select fonts to remove (Space to select, Enter to confirm):" \
+        --cursor "→ " \
+        --selected-prefix "✓ " \
+        --unselected-prefix "○ " \
+        --height 15)
+
+    if [[ -z "$selected" ]]; then
+        gum style --foreground 147 "No fonts selected for removal."
+        return
+    fi
+
+    echo ""
+    gum style --foreground 226 --bold "Fonts to be removed:"
+    echo "$selected" | while IFS= read -r font; do
+        echo "  • $font"
+    done
+    echo ""
+
+    if ! gum confirm "Remove selected fonts?"; then
+        gum style --foreground 147 "Removal cancelled."
+        return
+    fi
+
+    echo ""
+
+    # Remove selected fonts
+    echo "$selected" | while IFS= read -r font; do
+        rm -rf "$fonts_dir/$font"
+        gum style --foreground 82 "✓ Removed: $font"
+    done
+
+    # Update font cache
+    echo ""
+    gum spin --spinner dot --title "Updating font cache..." -- \
+        fc-cache -fv "$HOME/.local/share/fonts/NerdFonts" 2>&1 | tee /tmp/fub-fonts.log
+
+    echo ""
+    gum style --foreground 82 "✅ Selected fonts removed successfully!"
 }
 
 # =============================================================================
@@ -1563,6 +2336,33 @@ main() {
                 run_gum_uninstaller
             else
                 echo -e "${YELLOW}Uninstaller requires gum to be installed.${NC}"
+                show_gum_install_message
+                exit 1
+            fi
+            ;;
+        "debloat")
+            if [[ "$USE_GUM" == true ]]; then
+                run_gum_debloat
+            else
+                echo -e "${YELLOW}System Debloat requires gum to be installed.${NC}"
+                show_gum_install_message
+                exit 1
+            fi
+            ;;
+        "swap")
+            if [[ "$USE_GUM" == true ]]; then
+                run_gum_swap_manager
+            else
+                echo -e "${YELLOW}Swap Manager requires gum to be installed.${NC}"
+                show_gum_install_message
+                exit 1
+            fi
+            ;;
+        "fonts"|"font")
+            if [[ "$USE_GUM" == true ]]; then
+                run_gum_font_installer
+            else
+                echo -e "${YELLOW}Nerd Font Installer requires gum to be installed.${NC}"
                 show_gum_install_message
                 exit 1
             fi
