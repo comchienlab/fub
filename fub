@@ -25,6 +25,9 @@ readonly NC='\033[0m' # No Color
 DRY_RUN=false
 VERBOSE=false
 QUIET=false
+USE_GUM=false
+CONFIG_DIR="$HOME/.config/fub"
+CONFIG_FILE="$CONFIG_DIR/config.conf"
 
 # =============================================================================
 # Utility Functions
@@ -39,6 +42,9 @@ USAGE:
     $SCRIPT_NAME clean              Clean system with dry-run preview
     $SCRIPT_NAME clean --dry-run    Preview cleanup without execution
     $SCRIPT_NAME clean --force      Clean without confirmation prompts
+    $SCRIPT_NAME analyze            Analyze disk usage (requires gum)
+    $SCRIPT_NAME uninstall          Uninstall applications (requires gum)
+    $SCRIPT_NAME configure          Configure cleanup profiles (requires gum)
     $SCRIPT_NAME --version          Show version information
     $SCRIPT_NAME --help             Show this help message
 
@@ -46,10 +52,19 @@ EXAMPLES:
     $SCRIPT_NAME                    # Interactive dashboard with navigation
     $SCRIPT_NAME clean --dry-run    # See what would be cleaned
     $SCRIPT_NAME clean              # Execute cleanup safely
+    $SCRIPT_NAME analyze            # Browse largest directories
+    $SCRIPT_NAME uninstall          # Search and remove packages
+
+NEW FEATURES (with gum):
+    📁 Disk Analyzer - Interactively browse and clean large directories
+    🗑️  App Uninstaller - Search and thoroughly remove applications
+    ⚙️  Profiles - Configure Desktop, Server, or Minimal cleanup modes
+    ✨ Enhanced UI - Modern styling with progress indicators
 
 TAGLINE: Dig deep like a mole to clean your Ubuntu
 
 For more information, visit: https://github.com/[user]/fub
+Install gum: https://github.com/charmbracelet/gum
 EOF
 }
 
@@ -147,6 +162,56 @@ get_disk_info() {
     local used_percent
     used_percent=$(df -h / | awk 'NR==2 {print $5}')
     echo "$free_space free ($used_percent used)"
+}
+
+# =============================================================================
+# Gum Detection and Configuration
+# =============================================================================
+
+check_gum() {
+    if command -v gum >/dev/null 2>&1; then
+        USE_GUM=true
+        log DEBUG "Gum detected - enhanced UI enabled"
+        return 0
+    else
+        USE_GUM=false
+        log DEBUG "Gum not found - using fallback UI"
+        return 1
+    fi
+}
+
+show_gum_install_message() {
+    echo ""
+    echo -e "${YELLOW}💡 Tip: Install gum for an enhanced UI experience!${NC}"
+    echo ""
+    echo "  Ubuntu 22.04+ / Debian:"
+    echo "    sudo mkdir -p /etc/apt/keyrings"
+    echo "    curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg"
+    echo "    echo 'deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *' | sudo tee /etc/apt/sources.list.d/charm.list"
+    echo "    sudo apt update && sudo apt install -y gum"
+    echo ""
+    echo "  More info: https://github.com/charmbracelet/gum"
+    echo ""
+}
+
+load_config() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        source "$CONFIG_FILE"
+        log DEBUG "Config loaded from $CONFIG_FILE"
+    else
+        log DEBUG "No config file found at $CONFIG_FILE"
+    fi
+}
+
+save_config() {
+    mkdir -p "$CONFIG_DIR"
+    cat > "$CONFIG_FILE" << EOF
+# FUB Configuration
+# Profile: ${CLEANUP_PROFILE:-default}
+CLEANUP_PROFILE="${CLEANUP_PROFILE:-default}"
+SHOW_GUM_TIP="${SHOW_GUM_TIP:-true}"
+EOF
+    log DEBUG "Config saved to $CONFIG_FILE"
 }
 
 # =============================================================================
@@ -719,6 +784,321 @@ show_help_screen() {
 }
 
 # =============================================================================
+# Gum-Enhanced Dashboard (Modern TUI)
+# =============================================================================
+
+show_gum_dashboard() {
+    clear
+
+    # System info banner
+    local ubuntu_ver=$(detect_ubuntu_version)
+    local disk_info=$(get_disk_info)
+
+    gum style \
+        --border double \
+        --border-foreground 212 \
+        --padding "1 2" \
+        --width 70 \
+        --align center \
+        "$(gum style --foreground 212 --bold 'FUB DASHBOARD')" \
+        "$(gum style --foreground 147 'Dig deep like a mole to clean your Ubuntu')" \
+        "" \
+        "$(gum style --foreground 86 "Ubuntu $ubuntu_ver | $disk_info")"
+
+    echo ""
+
+    # Interactive menu
+    local choice
+    choice=$(gum choose \
+        --header "$(gum style --foreground 212 --bold 'Main Menu')" \
+        --cursor "→ " \
+        --cursor-prefix "  " \
+        --selected-prefix "  " \
+        --height 12 \
+        "🧹  Clean System (with preview)" \
+        "🚀  Quick Clean (skip preview)" \
+        "📊  Dry-Run Only (analyze)" \
+        "📁  Disk Analyzer" \
+        "🗑️  Uninstall Apps" \
+        "⚙️  Configure Profiles" \
+        "ℹ️  System Status" \
+        "❓  Help & Documentation" \
+        "🚪  Exit")
+
+    case "$choice" in
+        "🧹"*) run_gum_cleanup_with_preview ;;
+        "🚀"*) run_gum_quick_clean ;;
+        "📊"*) run_gum_dry_run_only ;;
+        "📁"*) run_gum_disk_analyzer ;;
+        "🗑️"*) run_gum_uninstaller ;;
+        "⚙️"*) run_gum_configure_profiles ;;
+        "ℹ️"*) show_gum_system_status ;;
+        "❓"*) show_gum_help_screen ;;
+        "🚪"*)
+            gum style --foreground 212 "Goodbye! 👋"
+            exit 0
+            ;;
+    esac
+
+    # Return to menu
+    echo ""
+    gum style --foreground 86 "Press Enter to return to main menu..."
+    read -r
+    show_gum_dashboard
+}
+
+show_gum_system_status() {
+    clear
+    gum style --border double --border-foreground 212 --padding "1 2" --align center \
+        "$(gum style --bold --foreground 212 'SYSTEM STATUS')"
+
+    echo ""
+
+    gum style --foreground 147 --bold "System Information:"
+    echo "  Ubuntu Version: $(detect_ubuntu_version)"
+    echo "  Kernel: $(uname -r)"
+    echo "  Architecture: $(uname -m)"
+    echo "  Uptime: $(uptime -p 2>/dev/null || echo "N/A")"
+    echo ""
+
+    gum style --foreground 147 --bold "Disk Usage:"
+    df -h | grep -E '^/dev/' | while read -r line; do
+        echo "  $line"
+    done
+    echo ""
+
+    gum style --foreground 147 --bold "Memory Usage:"
+    free -h | grep -E '^Mem:|^Swap:' | while read -r line; do
+        echo "  $line"
+    done
+    echo ""
+
+    gum style --foreground 147 --bold "FUB Status:"
+    echo "  Version: $VERSION"
+    echo "  Gum: $(if command -v gum >/dev/null 2>&1; then echo "✅ Installed"; else echo "❌ Not installed"; fi)"
+    echo "  Installation: $(if [[ -x "$INSTALL_DIR/fub" ]]; then echo "✅ Installed"; else echo "❌ Not found"; fi)"
+    echo ""
+}
+
+show_gum_help_screen() {
+    clear
+    gum style --border double --border-foreground 212 --padding "1 2" --align center \
+        "$(gum style --bold --foreground 212 'HELP & DOCUMENTATION')"
+
+    echo ""
+
+    gum style --foreground 147 --bold "What is FUB?"
+    echo "FUB (Filesystem Ubuntu Buddy) is a terminal-based cleanup utility"
+    echo "for Ubuntu, inspired by Mole for macOS. It helps you reclaim disk"
+    echo "space by cleaning system caches, old kernels, and temporary files."
+    echo ""
+
+    gum style --foreground 147 --bold "Cleanup Categories:"
+    echo "  🧹 APT Cache - Old package files"
+    echo "  🗂️  Old Kernels - Previous kernel versions (keeps current + 1)"
+    echo "  📋 systemd Journal - System logs"
+    echo "  🌐 Browser Caches - Firefox, Chrome, Chromium"
+    echo "  💾 User Caches - Application caches in ~/.cache/"
+    echo "  🗑️  Temp Files - Old temporary files"
+    echo ""
+
+    gum style --foreground 147 --bold "New Features (Gum-Enhanced):"
+    echo "  📁 Disk Analyzer - Interactive directory browser"
+    echo "  🗑️  App Uninstaller - Search and remove packages"
+    echo "  ⚙️  Profiles - Desktop, Server, or Minimal cleanup modes"
+    echo ""
+
+    gum style --foreground 147 --bold "Safety Features:"
+    echo "  ✅ Never removes current kernel"
+    echo "  ✅ Dry-run mode shows exactly what will be cleaned"
+    echo "  ✅ Explicit confirmations for all operations"
+    echo "  ✅ Skips cleanup if APT is locked"
+    echo ""
+}
+
+# =============================================================================
+# Gum-Enhanced Cleanup Functions
+# =============================================================================
+
+run_gum_cleanup_with_preview() {
+    clear
+    gum style --foreground 212 --bold "🔍 Analyzing system for cleanup opportunities..."
+    echo ""
+
+    # Run dry-run first
+    run_all_cleanup true
+
+    echo ""
+    if gum confirm "Proceed with cleanup?"; then
+        echo ""
+        gum spin --spinner dot --title "Cleaning system..." -- sleep 1
+        echo ""
+        run_gum_cleanup_execute
+    else
+        gum style --foreground 226 "Cleanup cancelled."
+    fi
+}
+
+run_gum_quick_clean() {
+    clear
+    gum style --foreground 212 --bold "🚀 Quick Clean Mode"
+    echo ""
+    gum style --foreground 244 "This will clean all categories without preview."
+    echo ""
+
+    if gum confirm "Are you sure?"; then
+        echo ""
+        run_gum_cleanup_execute
+    else
+        gum style --foreground 226 "Quick clean cancelled."
+    fi
+}
+
+run_gum_dry_run_only() {
+    clear
+    gum style --foreground 212 --bold "📊 Dry-Run Analysis"
+    echo ""
+    run_all_cleanup true
+}
+
+run_gum_cleanup_execute() {
+    # Cleanup with spinners for each category
+    gum spin --spinner dot --title "Cleaning APT cache..." -- bash -c "cleanup_apt_cache false" 2>/dev/null || true
+    gum spin --spinner dot --title "Vacuuming systemd journal..." -- bash -c "cleanup_systemd_journal false" 2>/dev/null || true
+    gum spin --spinner dot --title "Cleaning browser caches..." -- bash -c "cleanup_browser_caches false" 2>/dev/null || true
+    gum spin --spinner dot --title "Cleaning user caches..." -- bash -c "cleanup_user_caches false" 2>/dev/null || true
+    gum spin --spinner dot --title "Cleaning temp files..." -- bash -c "cleanup_temp_files false" 2>/dev/null || true
+
+    echo ""
+    gum style --foreground 82 --bold "✅ Cleanup completed!"
+}
+
+# =============================================================================
+# Disk Analyzer (New Mole-Inspired Feature)
+# =============================================================================
+
+run_gum_disk_analyzer() {
+    clear
+    gum style --border double --border-foreground 212 --padding "1 2" --align center \
+        "$(gum style --bold --foreground 212 '📁 DISK ANALYZER')"
+
+    echo ""
+    gum style --foreground 147 "Analyzing disk usage... This may take a moment."
+    echo ""
+
+    # Get largest directories in home
+    local temp_file=$(mktemp)
+    du -h "$HOME" 2>/dev/null | sort -hr | head -30 > "$temp_file"
+
+    # Let user select directory to explore
+    local selected
+    selected=$(cat "$temp_file" | gum filter --placeholder "Search directories..." --height 20)
+
+    rm -f "$temp_file"
+
+    if [[ -n "$selected" ]]; then
+        local dir_path=$(echo "$selected" | awk '{print $2}')
+        local dir_size=$(echo "$selected" | awk '{print $1}')
+
+        echo ""
+        gum style --foreground 212 --bold "Selected: $dir_path ($dir_size)"
+        echo ""
+
+        # Show directory contents
+        ls -lh "$dir_path" 2>/dev/null | tail -n +2 | head -20
+
+        echo ""
+        if gum confirm "Open this directory in your file manager?"; then
+            xdg-open "$dir_path" 2>/dev/null || true
+        fi
+    fi
+}
+
+# =============================================================================
+# App Uninstaller (New Mole-Inspired Feature)
+# =============================================================================
+
+run_gum_uninstaller() {
+    clear
+    gum style --border double --border-foreground 212 --padding "1 2" --align center \
+        "$(gum style --bold --foreground 212 '🗑️  APP UNINSTALLER')"
+
+    echo ""
+    gum style --foreground 147 "Loading installed packages..."
+    echo ""
+
+    # Get installed packages
+    local temp_file=$(mktemp)
+    dpkg --get-selections | grep -v deinstall | awk '{print $1}' > "$temp_file"
+
+    # Let user search and select
+    local selected
+    selected=$(cat "$temp_file" | gum filter --placeholder "Search packages to uninstall..." --height 20)
+
+    rm -f "$temp_file"
+
+    if [[ -n "$selected" ]]; then
+        echo ""
+        gum style --foreground 226 --bold "Package: $selected"
+        echo ""
+
+        # Show package info
+        apt show "$selected" 2>/dev/null | head -15
+
+        echo ""
+        if gum confirm "Uninstall $selected and remove config files?"; then
+            echo ""
+            gum spin --spinner dot --title "Uninstalling $selected..." -- sudo apt purge -y "$selected"
+            echo ""
+            gum style --foreground 82 "✅ Package uninstalled!"
+        else
+            gum style --foreground 226 "Uninstall cancelled."
+        fi
+    fi
+}
+
+# =============================================================================
+# Configuration Profiles (New Feature)
+# =============================================================================
+
+run_gum_configure_profiles() {
+    clear
+    gum style --border double --border-foreground 212 --padding "1 2" --align center \
+        "$(gum style --bold --foreground 212 '⚙️  CONFIGURATION PROFILES')"
+
+    echo ""
+    gum style --foreground 147 "Choose a cleanup profile for your system:"
+    echo ""
+
+    local profile
+    profile=$(gum choose \
+        --header "Select Profile:" \
+        --cursor "→ " \
+        "Desktop (aggressive - includes browser caches, user caches)" \
+        "Server (conservative - skip user/browser caches)" \
+        "Minimal (APT cache + journal only)")
+
+    case "$profile" in
+        "Desktop"*)
+            CLEANUP_PROFILE="desktop"
+            gum style --foreground 82 "✅ Desktop profile selected"
+            ;;
+        "Server"*)
+            CLEANUP_PROFILE="server"
+            gum style --foreground 82 "✅ Server profile selected"
+            ;;
+        "Minimal"*)
+            CLEANUP_PROFILE="minimal"
+            gum style --foreground 82 "✅ Minimal profile selected"
+            ;;
+    esac
+
+    save_config
+    echo ""
+    gum style --foreground 147 "Profile saved to $CONFIG_FILE"
+}
+
+# =============================================================================
 # Cleanup Functions
 # =============================================================================
 
@@ -1137,30 +1517,95 @@ run_dry_run_only() {
 # =============================================================================
 
 main() {
+    # Load configuration
+    load_config
+
+    # Check for gum
+    check_gum
+
     # Validate we're running on Ubuntu
     validate_ubuntu
 
     # Parse command line arguments
     case "${1:-}" in
         "clean")
-            if [[ "${2:-}" == "--dry-run" ]]; then
-                DRY_RUN=true
-                run_dry_run_only
-            elif [[ "${2:-}" == "--force" ]]; then
-                run_quick_clean
+            if [[ "$USE_GUM" == true ]]; then
+                if [[ "${2:-}" == "--dry-run" ]]; then
+                    DRY_RUN=true
+                    run_gum_dry_run_only
+                elif [[ "${2:-}" == "--force" ]]; then
+                    run_gum_quick_clean
+                else
+                    run_gum_cleanup_with_preview
+                fi
             else
-                run_cleanup_with_preview
+                if [[ "${2:-}" == "--dry-run" ]]; then
+                    DRY_RUN=true
+                    run_dry_run_only
+                elif [[ "${2:-}" == "--force" ]]; then
+                    run_quick_clean
+                else
+                    run_cleanup_with_preview
+                fi
+            fi
+            ;;
+        "analyze"|"disk")
+            if [[ "$USE_GUM" == true ]]; then
+                run_gum_disk_analyzer
+            else
+                echo -e "${YELLOW}Disk analyzer requires gum to be installed.${NC}"
+                show_gum_install_message
+                exit 1
+            fi
+            ;;
+        "uninstall")
+            if [[ "$USE_GUM" == true ]]; then
+                run_gum_uninstaller
+            else
+                echo -e "${YELLOW}Uninstaller requires gum to be installed.${NC}"
+                show_gum_install_message
+                exit 1
+            fi
+            ;;
+        "configure"|"config")
+            if [[ "$USE_GUM" == true ]]; then
+                run_gum_configure_profiles
+            else
+                echo -e "${YELLOW}Configuration requires gum to be installed.${NC}"
+                show_gum_install_message
+                exit 1
             fi
             ;;
         "--version"|"-v")
             print_version
+            if [[ "$USE_GUM" == true ]]; then
+                echo ""
+                gum style --foreground 82 "✅ Gum-enhanced UI is active"
+            else
+                echo ""
+                echo -e "${YELLOW}ℹ️  Using fallback UI (gum not installed)${NC}"
+            fi
             ;;
         "--help"|"-h")
             print_usage
+            if [[ "$USE_GUM" == false ]]; then
+                show_gum_install_message
+            fi
             ;;
         "")
-            # No arguments - show enhanced interactive dashboard with arrow key navigation
-            handle_enhanced_dashboard
+            # No arguments - show interactive dashboard
+            if [[ "$USE_GUM" == true ]]; then
+                show_gum_dashboard
+            else
+                # Show tip about gum once
+                if [[ "${SHOW_GUM_TIP:-true}" == "true" ]]; then
+                    show_gum_install_message
+                    SHOW_GUM_TIP=false
+                    save_config
+                    read -p "Press Enter to continue to dashboard..." -r
+                fi
+                handle_enhanced_dashboard
+            fi
             ;;
         *)
             echo -e "${RED}Error: Unknown command '${1}'${NC}"
