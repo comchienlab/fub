@@ -45,6 +45,7 @@ USAGE:
     $SCRIPT_NAME analyze            Analyze disk usage (requires gum)
     $SCRIPT_NAME uninstall          Uninstall applications (requires gum)
     $SCRIPT_NAME debloat            Remove bloatware and unnecessary software (requires gum)
+    $SCRIPT_NAME swap               Manage swap files for memory (requires gum)
     $SCRIPT_NAME configure          Configure cleanup profiles (requires gum)
     $SCRIPT_NAME --version          Show version information
     $SCRIPT_NAME --help             Show this help message
@@ -56,11 +57,13 @@ EXAMPLES:
     $SCRIPT_NAME analyze            # Browse largest directories
     $SCRIPT_NAME uninstall          # Search and remove packages
     $SCRIPT_NAME debloat            # Remove snap, bloatware, orphans
+    $SCRIPT_NAME swap               # Create/manage swap files
 
 NEW FEATURES (with gum):
     📁 Disk Analyzer - Interactively browse and clean large directories
     🗑️  App Uninstaller - Search and thoroughly remove applications
     💣 System Debloat - Remove snap packages, GNOME bloatware, orphaned packages
+    💾 Swap Manager - Create and manage swap files (2-32GB options)
     ⚙️  Profiles - Configure Desktop, Server, or Minimal cleanup modes
     ✨ Enhanced UI - Modern styling with progress indicators
 
@@ -817,13 +820,14 @@ show_gum_dashboard() {
         --cursor "→ " \
         --cursor-prefix "  " \
         --selected-prefix "  " \
-        --height 13 \
+        --height 14 \
         "🧹  Clean System (with preview)" \
         "🚀  Quick Clean (skip preview)" \
         "📊  Dry-Run Only (analyze)" \
         "📁  Disk Analyzer" \
         "🗑️  Uninstall Apps" \
         "💣  System Debloat" \
+        "💾  Swap Manager" \
         "⚙️  Configure Profiles" \
         "ℹ️  System Status" \
         "❓  Help & Documentation" \
@@ -836,6 +840,7 @@ show_gum_dashboard() {
         "📁"*) run_gum_disk_analyzer ;;
         "🗑️"*) run_gum_uninstaller ;;
         "💣"*) run_gum_debloat ;;
+        "💾"*) run_gum_swap_manager ;;
         "⚙️"*) run_gum_configure_profiles ;;
         "ℹ️"*) show_gum_system_status ;;
         "❓"*) show_gum_help_screen ;;
@@ -1261,6 +1266,269 @@ run_gum_debloat() {
 
     echo ""
     gum style --foreground 147 "Space reclaimed: $(df -h / | tail -1 | awk '{print $4}') available"
+}
+
+# =============================================================================
+# Swap File Manager (Memory Management)
+# =============================================================================
+
+run_gum_swap_manager() {
+    clear
+    gum style --border double --border-foreground 212 --padding "1 2" --align center \
+        "$(gum style --bold --foreground 212 '💾 SWAP FILE MANAGER')"
+
+    echo ""
+    gum style --foreground 147 "Manage swap files for systems with limited RAM."
+    echo ""
+
+    # Show current swap status
+    gum style --foreground 212 --bold "Current Memory Status:"
+    echo ""
+    free -h | grep -E '^Mem:|^Swap:' | while IFS= read -r line; do
+        echo "  $line"
+    done
+    echo ""
+
+    # Check if swap exists
+    local has_swap=false
+    local swap_size=""
+    local swap_file=""
+
+    if swapon --show | grep -q "/swapfile"; then
+        has_swap=true
+        swap_file="/swapfile"
+        swap_size=$(swapon --show | grep "/swapfile" | awk '{print $3}')
+    elif swapon --show | tail -n +2 | grep -q "/"; then
+        has_swap=true
+        swap_file=$(swapon --show | tail -n +2 | awk '{print $1}' | head -1)
+        swap_size=$(swapon --show | tail -n +2 | awk '{print $3}' | head -1)
+    fi
+
+    if [[ "$has_swap" == true ]]; then
+        gum style --foreground 82 "✅ Swap file detected: $swap_file ($swap_size)"
+        echo ""
+    else
+        gum style --foreground 226 "⚠️  No swap file detected"
+        echo ""
+    fi
+
+    # Present options
+    local action
+    if [[ "$has_swap" == true ]]; then
+        action=$(gum choose \
+            --header "Select action:" \
+            --cursor "→ " \
+            "Create new swap file (replaces existing)" \
+            "Disable and remove swap" \
+            "Show detailed swap info" \
+            "Cancel")
+    else
+        action=$(gum choose \
+            --header "Select action:" \
+            --cursor "→ " \
+            "Create swap file" \
+            "Show memory info" \
+            "Cancel")
+    fi
+
+    case "$action" in
+        *"Create"*)
+            create_swap_file
+            ;;
+        *"Disable"*)
+            remove_swap_file "$swap_file"
+            ;;
+        *"Show"*)
+            show_swap_info
+            ;;
+        "Cancel")
+            gum style --foreground 147 "Swap management cancelled."
+            ;;
+    esac
+}
+
+create_swap_file() {
+    echo ""
+    gum style --foreground 212 --bold "Create Swap File"
+    echo ""
+
+    # Recommend swap size based on RAM
+    local total_ram_mb=$(free -m | awk '/^Mem:/ {print $2}')
+    local recommended_gb=4
+
+    if [[ $total_ram_mb -lt 2048 ]]; then
+        recommended_gb=4
+    elif [[ $total_ram_mb -lt 4096 ]]; then
+        recommended_gb=8
+    elif [[ $total_ram_mb -lt 8192 ]]; then
+        recommended_gb=8
+    else
+        recommended_gb=16
+    fi
+
+    gum style --foreground 147 "Total RAM: $(free -h | awk '/^Mem:/ {print $2}')"
+    gum style --foreground 147 "Recommended swap: ${recommended_gb}GB"
+    echo ""
+
+    # Let user choose size
+    local size_choice
+    size_choice=$(gum choose \
+        --header "Select swap file size:" \
+        --cursor "→ " \
+        "2GB" \
+        "4GB (recommended for <4GB RAM)" \
+        "8GB (recommended for 4-8GB RAM)" \
+        "16GB (recommended for >8GB RAM)" \
+        "32GB (for intensive workloads)" \
+        "Custom size" \
+        "Cancel")
+
+    if [[ "$size_choice" == "Cancel" ]]; then
+        return
+    fi
+
+    local swap_size_gb
+    if [[ "$size_choice" == "Custom size" ]]; then
+        swap_size_gb=$(gum input --placeholder "Enter size in GB (e.g., 4)")
+
+        # Validate input
+        if ! [[ "$swap_size_gb" =~ ^[0-9]+$ ]]; then
+            gum style --foreground 196 "❌ Invalid input. Must be a number."
+            return
+        fi
+
+        if [[ $swap_size_gb -lt 1 ]] || [[ $swap_size_gb -gt 64 ]]; then
+            gum style --foreground 196 "❌ Size must be between 1 and 64 GB."
+            return
+        fi
+    else
+        swap_size_gb=$(echo "$size_choice" | grep -oP '^\d+')
+    fi
+
+    echo ""
+    gum style --foreground 212 --bold "Creating ${swap_size_gb}GB swap file..."
+    echo ""
+
+    # Confirm
+    if ! gum confirm "Create ${swap_size_gb}GB swap file at /swapfile?"; then
+        gum style --foreground 226 "Swap creation cancelled."
+        return
+    fi
+
+    echo ""
+
+    # Disable existing swap
+    if swapon --show | grep -q "/swapfile"; then
+        gum spin --spinner dot --title "Disabling existing swap..." -- \
+            sudo swapoff /swapfile 2>&1 | tee /tmp/fub-swap.log || true
+        sudo rm -f /swapfile 2>/dev/null || true
+    fi
+
+    # Create swap file using fallocate (faster than dd)
+    gum style --foreground 147 "Creating swap file (this may take a moment)..."
+    if ! sudo fallocate -l ${swap_size_gb}G /swapfile 2>/dev/null; then
+        # Fallback to dd if fallocate fails
+        gum spin --spinner dot --title "Creating swap file with dd..." -- \
+            sudo dd if=/dev/zero of=/swapfile bs=1M count=$((swap_size_gb * 1024)) status=progress 2>&1 | tee -a /tmp/fub-swap.log
+    else
+        gum style --foreground 82 "✅ Swap file allocated"
+    fi
+
+    # Set permissions
+    gum spin --spinner dot --title "Setting permissions..." -- \
+        sudo chmod 600 /swapfile 2>&1 | tee -a /tmp/fub-swap.log
+
+    # Format as swap
+    gum spin --spinner dot --title "Formatting as swap..." -- \
+        sudo mkswap /swapfile 2>&1 | tee -a /tmp/fub-swap.log
+
+    # Enable swap
+    gum spin --spinner dot --title "Enabling swap..." -- \
+        sudo swapon /swapfile 2>&1 | tee -a /tmp/fub-swap.log
+
+    # Add to fstab if not present
+    if ! grep -q "/swapfile" /etc/fstab 2>/dev/null; then
+        gum spin --spinner dot --title "Adding to /etc/fstab..." -- \
+            bash -c 'echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab' 2>&1 | tee -a /tmp/fub-swap.log
+        gum style --foreground 82 "✅ Added to /etc/fstab for persistence"
+    else
+        gum style --foreground 147 "Entry already exists in /etc/fstab"
+    fi
+
+    echo ""
+    gum style --border rounded --border-foreground 82 --padding "1 2" \
+        "$(gum style --foreground 82 --bold '✅ Swap file created successfully!')"
+
+    echo ""
+    gum style --foreground 212 --bold "New Memory Status:"
+    echo ""
+    free -h | grep -E '^Mem:|^Swap:' | while IFS= read -r line; do
+        echo "  $line"
+    done
+}
+
+remove_swap_file() {
+    local swap_file=$1
+    echo ""
+    gum style --foreground 226 --bold "⚠️  Remove Swap File"
+    echo ""
+
+    gum style --foreground 147 "This will disable and remove: $swap_file"
+    echo ""
+
+    if ! gum confirm "Are you sure you want to remove the swap file?"; then
+        gum style --foreground 147 "Swap removal cancelled."
+        return
+    fi
+
+    echo ""
+
+    # Disable swap
+    gum spin --spinner dot --title "Disabling swap..." -- \
+        sudo swapoff "$swap_file" 2>&1 | tee /tmp/fub-swap.log
+
+    # Remove swap file
+    gum spin --spinner dot --title "Removing swap file..." -- \
+        sudo rm -f "$swap_file" 2>&1 | tee -a /tmp/fub-swap.log
+
+    # Remove from fstab
+    if grep -q "$swap_file" /etc/fstab 2>/dev/null; then
+        gum spin --spinner dot --title "Removing from /etc/fstab..." -- \
+            sudo sed -i "\|$swap_file|d" /etc/fstab 2>&1 | tee -a /tmp/fub-swap.log
+        gum style --foreground 82 "✅ Removed from /etc/fstab"
+    fi
+
+    echo ""
+    gum style --border rounded --border-foreground 82 --padding "1 2" \
+        "$(gum style --foreground 82 --bold '✅ Swap file removed successfully!')"
+
+    echo ""
+    gum style --foreground 212 --bold "New Memory Status:"
+    echo ""
+    free -h | grep -E '^Mem:|^Swap:' | while IFS= read -r line; do
+        echo "  $line"
+    done
+}
+
+show_swap_info() {
+    echo ""
+    gum style --foreground 212 --bold "Detailed Swap Information"
+    echo ""
+
+    gum style --foreground 147 "Memory Status:"
+    free -h
+    echo ""
+
+    gum style --foreground 147 "Active Swap Devices:"
+    swapon --show
+    echo ""
+
+    gum style --foreground 147 "Swap Configuration in /etc/fstab:"
+    grep -E "swap|swapfile" /etc/fstab 2>/dev/null || echo "  No swap entries found"
+    echo ""
+
+    gum style --foreground 147 "Disk Space at /:"
+    df -h / | tail -1
 }
 
 # =============================================================================
@@ -1778,6 +2046,15 @@ main() {
                 run_gum_debloat
             else
                 echo -e "${YELLOW}System Debloat requires gum to be installed.${NC}"
+                show_gum_install_message
+                exit 1
+            fi
+            ;;
+        "swap")
+            if [[ "$USE_GUM" == true ]]; then
+                run_gum_swap_manager
+            else
+                echo -e "${YELLOW}Swap Manager requires gum to be installed.${NC}"
                 show_gum_install_message
                 exit 1
             fi
