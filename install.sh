@@ -227,6 +227,125 @@ uninstall_fub() {
 # Post-Installation
 # =============================================================================
 
+install_gum_optional() {
+    log DEBUG "Checking for gum installation"
+
+    # Check if gum is already installed
+    if command -v gum >/dev/null 2>&1; then
+        log INFO "Gum is already installed"
+        return 0
+    fi
+
+    echo ""
+    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC}                     ${WHITE}GUM INSTALLATION${NC}                          ${CYAN}║${NC}"
+    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${WHITE}Gum is a modern TUI toolkit that enhances FUB with:${NC}"
+    echo -e "  ✨ ${GREEN}Beautiful, modern UI${NC} with styled menus and borders"
+    echo -e "  📁 ${GREEN}Disk Analyzer${NC} - Interactive directory browser"
+    echo -e "  🗑️  ${GREEN}App Uninstaller${NC} - Search and remove packages"
+    echo -e "  ⚙️  ${GREEN}Configuration Profiles${NC} - Desktop, Server, or Minimal modes"
+    echo -e "  🎨 ${GREEN}Progress Indicators${NC} - Visual feedback during operations"
+    echo ""
+    echo -e "${YELLOW}FUB works without gum, but the experience is much better with it!${NC}"
+    echo ""
+
+    read -p "Install gum? (recommended) [Y/n]: " -r install_gum
+
+    if [[ $install_gum =~ ^[Nn]$ ]]; then
+        log INFO "Skipping gum installation"
+        echo ""
+        echo -e "${YELLOW}You can install gum later with:${NC}"
+        echo "  sudo mkdir -p /etc/apt/keyrings"
+        echo "  curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg"
+        echo "  echo 'deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *' | sudo tee /etc/apt/sources.list.d/charm.list"
+        echo "  sudo apt update && sudo apt install -y gum"
+        echo ""
+        return 0
+    fi
+
+    log INFO "Installing gum from Charm repository..."
+    echo ""
+
+    # Detect Ubuntu version to determine installation method
+    local ubuntu_version=$(detect_ubuntu_version)
+    local version_major=$(echo "$ubuntu_version" | cut -d. -f1)
+
+    if [[ "$version_major" -ge 22 ]]; then
+        # Ubuntu 22.04+ - Use the official Charm repository
+        log INFO "Setting up Charm repository for Ubuntu $ubuntu_version"
+
+        # Create keyrings directory
+        sudo mkdir -p /etc/apt/keyrings
+
+        # Add GPG key
+        if curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg; then
+            log DEBUG "GPG key added successfully"
+        else
+            log ERROR "Failed to add Charm GPG key"
+            return 1
+        fi
+
+        # Add repository
+        echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | \
+            sudo tee /etc/apt/sources.list.d/charm.list >/dev/null
+
+        # Update and install
+        log INFO "Updating package lists..."
+        if sudo apt update >/dev/null 2>&1; then
+            log INFO "Installing gum..."
+            if sudo apt install -y gum; then
+                log INFO "✅ Gum installed successfully!"
+                return 0
+            else
+                log ERROR "Failed to install gum"
+                return 1
+            fi
+        else
+            log ERROR "Failed to update package lists"
+            return 1
+        fi
+    else
+        # Ubuntu 20.04 - Try binary installation
+        log INFO "Ubuntu 20.04 detected - attempting binary installation"
+
+        local gum_version="0.14.1"
+        local arch=$(uname -m)
+        local gum_arch=""
+
+        case "$arch" in
+            x86_64) gum_arch="amd64" ;;
+            aarch64) gum_arch="arm64" ;;
+            armv7l) gum_arch="armv7" ;;
+            *)
+                log ERROR "Unsupported architecture: $arch"
+                return 1
+                ;;
+        esac
+
+        local download_url="https://github.com/charmbracelet/gum/releases/download/v${gum_version}/gum_${gum_version}_Linux_${gum_arch}.tar.gz"
+        local temp_dir=$(mktemp -d)
+
+        log INFO "Downloading gum v${gum_version} for ${gum_arch}..."
+
+        if curl -fsSL "$download_url" -o "$temp_dir/gum.tar.gz"; then
+            cd "$temp_dir"
+            tar -xzf gum.tar.gz
+            sudo mv gum /usr/local/bin/
+            sudo chmod +x /usr/local/bin/gum
+            cd - >/dev/null
+            rm -rf "$temp_dir"
+            log INFO "✅ Gum installed successfully!"
+            return 0
+        else
+            log ERROR "Failed to download gum binary"
+            rm -rf "$temp_dir"
+            return 1
+        fi
+    fi
+}
+
 show_success_message() {
     if [[ "$UNINSTALL_MODE" == true ]]; then
         echo ""
@@ -248,9 +367,19 @@ show_success_message() {
         echo -e "  ${GREEN}fub${NC}                    # Show interactive dashboard"
         echo -e "  ${GREEN}fub clean --dry-run${NC}    # Preview cleanup"
         echo -e "  ${GREEN}fub clean${NC}              # Execute cleanup"
+        echo -e "  ${GREEN}fub analyze${NC}            # Disk analyzer (requires gum)"
+        echo -e "  ${GREEN}fub uninstall${NC}          # App uninstaller (requires gum)"
         echo -e "  ${GREEN}fub --help${NC}             # Show help"
         echo ""
         echo -e "${CYAN}Tagline:${NC} Dig deep like a mole to clean your Ubuntu"
+        echo ""
+
+        if command -v gum >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ Gum is installed - Enhanced UI features enabled!${NC}"
+        else
+            echo -e "${YELLOW}ℹ️  Using basic UI (gum not installed)${NC}"
+            echo -e "${YELLOW}   Install gum for enhanced features: disk analyzer, app uninstaller, profiles${NC}"
+        fi
         echo ""
         echo -e "${YELLOW}First time? Run 'fub clean --dry-run' to see what can be cleaned.${NC}"
         echo ""
@@ -309,6 +438,11 @@ main() {
         log INFO "Starting FUB installation"
         validate_system
         install_fub
+
+        # Offer to install gum for enhanced features
+        if [[ "$DRY_RUN_MODE" != true ]]; then
+            install_gum_optional
+        fi
     fi
 
     show_success_message
