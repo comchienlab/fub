@@ -44,6 +44,7 @@ USAGE:
     $SCRIPT_NAME clean --force      Clean without confirmation prompts
     $SCRIPT_NAME analyze            Analyze disk usage (requires gum)
     $SCRIPT_NAME uninstall          Uninstall applications (requires gum)
+    $SCRIPT_NAME debloat            Remove bloatware and unnecessary software (requires gum)
     $SCRIPT_NAME configure          Configure cleanup profiles (requires gum)
     $SCRIPT_NAME --version          Show version information
     $SCRIPT_NAME --help             Show this help message
@@ -54,10 +55,12 @@ EXAMPLES:
     $SCRIPT_NAME clean              # Execute cleanup safely
     $SCRIPT_NAME analyze            # Browse largest directories
     $SCRIPT_NAME uninstall          # Search and remove packages
+    $SCRIPT_NAME debloat            # Remove snap, bloatware, orphans
 
 NEW FEATURES (with gum):
     📁 Disk Analyzer - Interactively browse and clean large directories
     🗑️  App Uninstaller - Search and thoroughly remove applications
+    💣 System Debloat - Remove snap packages, GNOME bloatware, orphaned packages
     ⚙️  Profiles - Configure Desktop, Server, or Minimal cleanup modes
     ✨ Enhanced UI - Modern styling with progress indicators
 
@@ -814,12 +817,13 @@ show_gum_dashboard() {
         --cursor "→ " \
         --cursor-prefix "  " \
         --selected-prefix "  " \
-        --height 12 \
+        --height 13 \
         "🧹  Clean System (with preview)" \
         "🚀  Quick Clean (skip preview)" \
         "📊  Dry-Run Only (analyze)" \
         "📁  Disk Analyzer" \
         "🗑️  Uninstall Apps" \
+        "💣  System Debloat" \
         "⚙️  Configure Profiles" \
         "ℹ️  System Status" \
         "❓  Help & Documentation" \
@@ -831,6 +835,7 @@ show_gum_dashboard() {
         "📊"*) run_gum_dry_run_only ;;
         "📁"*) run_gum_disk_analyzer ;;
         "🗑️"*) run_gum_uninstaller ;;
+        "💣"*) run_gum_debloat ;;
         "⚙️"*) run_gum_configure_profiles ;;
         "ℹ️"*) show_gum_system_status ;;
         "❓"*) show_gum_help_screen ;;
@@ -1055,6 +1060,207 @@ run_gum_uninstaller() {
             gum style --foreground 226 "Uninstall cancelled."
         fi
     fi
+}
+
+# =============================================================================
+# System Debloat (Remove Unnecessary Software)
+# =============================================================================
+
+run_gum_debloat() {
+    clear
+    gum style --border double --border-foreground 212 --padding "1 2" --align center \
+        "$(gum style --bold --foreground 212 '🗑️  SYSTEM DEBLOAT')"
+
+    echo ""
+    gum style --foreground 147 "Remove unnecessary software and bloatware from your system."
+    gum style --foreground 226 "⚠️  This will permanently remove selected components."
+    echo ""
+
+    # Check what's installed
+    local has_snap=false
+    local has_gnome_games=false
+    local has_gnome_software=false
+    local has_bluetooth=false
+    local has_orphans=false
+
+    # Detect installed bloatware
+    if command -v snap &> /dev/null; then
+        has_snap=true
+    fi
+    if dpkg -l | grep -q "gnome-games"; then
+        has_gnome_games=true
+    fi
+    if dpkg -l | grep -q "gnome-software"; then
+        has_gnome_software=true
+    fi
+    if systemctl is-enabled bluetooth &> /dev/null 2>&1; then
+        has_bluetooth=true
+    fi
+    if command -v deborphan &> /dev/null && [[ -n "$(sudo deborphan 2>/dev/null)" ]]; then
+        has_orphans=true
+    fi
+
+    # Build options list
+    local options=()
+
+    if [[ "$has_snap" == true ]]; then
+        options+=("Snap packages (snapd)")
+    fi
+    if [[ "$has_gnome_games" == true ]]; then
+        options+=("GNOME Games")
+    fi
+    if [[ "$has_gnome_software" == true ]]; then
+        options+=("GNOME Software Center")
+    fi
+    if [[ "$has_bluetooth" == true ]]; then
+        options+=("Bluetooth service (disable)")
+    fi
+    options+=("Orphaned packages (unused dependencies)")
+
+    if [[ ${#options[@]} -eq 0 ]]; then
+        gum style --foreground 82 "✅ No bloatware detected! Your system is already clean."
+        return
+    fi
+
+    # Let user select what to remove
+    local selected
+    selected=$(printf '%s\n' "${options[@]}" | gum choose \
+        --no-limit \
+        --header "Select components to remove (Space to select, Enter to confirm):" \
+        --cursor "→ " \
+        --selected-prefix "✓ " \
+        --unselected-prefix "○ " \
+        --height 15)
+
+    if [[ -z "$selected" ]]; then
+        gum style --foreground 226 "No components selected. Debloat cancelled."
+        return
+    fi
+
+    echo ""
+    gum style --foreground 212 --bold "Selected for removal:"
+    echo "$selected" | while IFS= read -r line; do
+        echo "  • $line"
+    done
+    echo ""
+
+    # Show size estimation
+    gum style --foreground 147 "Estimating space savings..."
+    local total_size=0
+
+    if echo "$selected" | grep -q "Snap packages"; then
+        local snap_size=$(du -sh /var/lib/snapd 2>/dev/null | awk '{print $1}' || echo "0")
+        gum style --foreground 86 "  Snap packages: ~$snap_size"
+    fi
+    if echo "$selected" | grep -q "GNOME Games"; then
+        gum style --foreground 86 "  GNOME Games: ~50-100 MB"
+    fi
+    if echo "$selected" | grep -q "GNOME Software"; then
+        gum style --foreground 86 "  GNOME Software: ~20-50 MB"
+    fi
+    if echo "$selected" | grep -q "Orphaned"; then
+        local orphan_count=$(sudo deborphan 2>/dev/null | wc -l || echo "0")
+        gum style --foreground 86 "  Orphaned packages: $orphan_count packages"
+    fi
+
+    echo ""
+
+    # Confirm before proceeding
+    if ! gum confirm "Proceed with debloating?"; then
+        gum style --foreground 226 "Debloat cancelled."
+        return
+    fi
+
+    echo ""
+    gum style --foreground 212 --bold "Starting debloat process..."
+    echo ""
+
+    # Execute removals
+    local errors=0
+
+    # Remove Snap
+    if echo "$selected" | grep -q "Snap packages"; then
+        gum style --foreground 147 "Removing Snap packages..."
+
+        # Remove all snap packages first
+        if snap list &> /dev/null; then
+            snap list 2>/dev/null | tail -n +2 | awk '{print $1}' | while read -r snapname; do
+                gum spin --spinner dot --title "Removing snap: $snapname" -- \
+                    sudo snap remove "$snapname" 2>&1 | tee /tmp/fub-debloat.log || ((errors++))
+            done
+        fi
+
+        # Remove snapd
+        gum spin --spinner dot --title "Removing snapd..." -- \
+            sudo apt purge -y snapd 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+
+        # Remove snap directories
+        sudo rm -rf /snap /var/snap /var/lib/snapd ~/snap 2>/dev/null
+
+        gum style --foreground 82 "✅ Snap removed"
+        echo ""
+    fi
+
+    # Remove GNOME Games
+    if echo "$selected" | grep -q "GNOME Games"; then
+        gum spin --spinner dot --title "Removing GNOME Games..." -- \
+            sudo apt purge -y gnome-games 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+        gum style --foreground 82 "✅ GNOME Games removed"
+        echo ""
+    fi
+
+    # Remove GNOME Software
+    if echo "$selected" | grep -q "GNOME Software"; then
+        gum spin --spinner dot --title "Removing GNOME Software Center..." -- \
+            sudo apt purge -y gnome-software 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+        gum style --foreground 82 "✅ GNOME Software Center removed"
+        echo ""
+    fi
+
+    # Disable Bluetooth
+    if echo "$selected" | grep -q "Bluetooth service"; then
+        gum spin --spinner dot --title "Disabling Bluetooth service..." -- \
+            sudo systemctl disable bluetooth 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+        sudo systemctl stop bluetooth 2>&1 | tee -a /tmp/fub-debloat.log || true
+        gum style --foreground 82 "✅ Bluetooth service disabled"
+        echo ""
+    fi
+
+    # Remove orphaned packages
+    if echo "$selected" | grep -q "Orphaned"; then
+        if command -v deborphan &> /dev/null; then
+            local orphans=$(sudo deborphan 2>/dev/null)
+            if [[ -n "$orphans" ]]; then
+                gum spin --spinner dot --title "Removing orphaned packages..." -- \
+                    sudo apt purge -y $(sudo deborphan) 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+                gum style --foreground 82 "✅ Orphaned packages removed"
+            else
+                gum style --foreground 147 "No orphaned packages found"
+            fi
+        else
+            gum style --foreground 226 "⚠️  deborphan not installed, skipping orphan removal"
+            gum style --foreground 147 "Install with: sudo apt install deborphan"
+        fi
+        echo ""
+    fi
+
+    # Clean up
+    gum spin --spinner dot --title "Cleaning up..." -- \
+        sudo apt autoremove -y 2>&1 | tee -a /tmp/fub-debloat.log || ((errors++))
+
+    echo ""
+
+    if [[ $errors -eq 0 ]]; then
+        gum style --border rounded --border-foreground 82 --padding "1 2" \
+            "$(gum style --foreground 82 --bold '✅ Debloat completed successfully!')"
+    else
+        gum style --border rounded --border-foreground 226 --padding "1 2" \
+            "$(gum style --foreground 226 --bold '⚠️  Debloat completed with some errors')"
+        gum style --foreground 147 "Check log: /tmp/fub-debloat.log"
+    fi
+
+    echo ""
+    gum style --foreground 147 "Space reclaimed: $(df -h / | tail -1 | awk '{print $4}') available"
 }
 
 # =============================================================================
@@ -1563,6 +1769,15 @@ main() {
                 run_gum_uninstaller
             else
                 echo -e "${YELLOW}Uninstaller requires gum to be installed.${NC}"
+                show_gum_install_message
+                exit 1
+            fi
+            ;;
+        "debloat")
+            if [[ "$USE_GUM" == true ]]; then
+                run_gum_debloat
+            else
+                echo -e "${YELLOW}System Debloat requires gum to be installed.${NC}"
                 show_gum_install_message
                 exit 1
             fi
