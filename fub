@@ -1056,8 +1056,10 @@ run_gum_uninstaller() {
     gum style --foreground 82 "Found $total_packages installed packages"
     echo ""
 
-    # Format packages with human-readable sizes and age indicators
+    # Format packages with human-readable sizes, age indicators, and categories
     local formatted_list=$(mktemp)
+    local formatted_user=$(mktemp)
+    local formatted_system=$(mktemp)
     local current_time=$(date +%s)
 
     while IFS='|' read -r pkg size_kb; do
@@ -1074,8 +1076,10 @@ run_gum_uninstaller() {
                 size_display="${size_kb}K"
             fi
 
-            # Determine package age (Old vs Recent)
+            # Determine package age (Old vs Recent) with color coding
             local age_indicator="Recent"
+            local age_color="82"  # Green
+            local age_emoji="🟢"
             local list_file="/var/lib/dpkg/info/${pkg}.list"
 
             if [[ -f "$list_file" ]]; then
@@ -1084,23 +1088,65 @@ run_gum_uninstaller() {
 
                 if [[ $days_old -gt 180 ]]; then
                     age_indicator="Old"
+                    age_color="196"  # Red
+                    age_emoji="🔴"
                 elif [[ $days_old -gt 90 ]]; then
                     age_indicator="Aged"
+                    age_color="226"  # Yellow
+                    age_emoji="🟡"
                 fi
             fi
 
-            # Format: package_name (size) | age
-            # Using proper spacing for alignment
-            printf "%-45s (%6s) | %-6s\n" "$pkg" "$size_display" "$age_indicator" >> "$formatted_list"
+            # Determine package category: USER or SYSTEM
+            local category="USER"
+            local category_emoji="📦"
+            local is_system=false
+
+            # Check if package is system/essential
+            local priority=$(dpkg-query -W -f='${Priority}' "$pkg" 2>/dev/null || echo "optional")
+            local section=$(dpkg-query -W -f='${Section}' "$pkg" 2>/dev/null || echo "")
+            local essential=$(dpkg-query -W -f='${Essential}' "$pkg" 2>/dev/null || echo "no")
+
+            # System package detection (combined method)
+            if [[ "$essential" == "yes" ]] || \
+               [[ "$priority" == "required" ]] || \
+               [[ "$priority" == "important" ]] || \
+               [[ "$section" =~ ^(admin|base|libs)$ ]] || \
+               [[ "$pkg" =~ ^(apt|dpkg|systemd|libc|bash|coreutils|init|ubuntu-minimal) ]]; then
+                category="SYSTEM"
+                category_emoji="🔧"
+                is_system=true
+            fi
+
+            # Format: package_name [CATEGORY] (size) | age emoji
+            local line=$(printf "%-35s [%-6s] (%6s) | %-6s %s" "$pkg" "$category" "$size_display" "$age_indicator" "$age_emoji")
+
+            # Separate USER and SYSTEM apps for sorting
+            if [[ "$is_system" == false ]]; then
+                echo "$line|$age_color" >> "$formatted_user"
+            else
+                echo "$line|$age_color" >> "$formatted_system"
+            fi
         fi
     done < "$temp_sizes"
 
+    # Combine: USER apps first, then SYSTEM apps
+    cat "$formatted_user" "$formatted_system" > "$formatted_list"
+    rm -f "$formatted_user" "$formatted_system"
+
     # Let user search and select multiple packages
     gum style --foreground 147 "Step 1: Search packages (type to filter, Enter to continue)"
+    gum style --foreground 147 "💡 Showing USER apps first, then SYSTEM apps"
     echo ""
 
+    # Strip color codes for display
+    local display_list=$(mktemp)
+    cat "$formatted_list" | cut -d'|' -f1 > "$display_list"
+
     local filtered
-    filtered=$(cat "$formatted_list" | gum filter --placeholder "Type to search packages..." --height 20 --no-limit)
+    filtered=$(cat "$display_list" | gum filter --placeholder "Type to search packages..." --height 20 --no-limit)
+
+    rm -f "$display_list"
 
     if [[ -z "$filtered" ]]; then
         gum style --foreground 147 "No packages found or search cancelled."
@@ -1118,7 +1164,8 @@ run_gum_uninstaller() {
     # Enhanced UI with header
     gum style --foreground 212 --bold "Select Apps to Remove"
     gum style --foreground 212 "═══════════════════════════════════════════════════════════════"
-    gum style --foreground 147 "💡 Old: >6 months | Aged: 3-6 months | Recent: <3 months"
+    gum style --foreground 147 "🔴 Old (>6mo) | 🟡 Aged (3-6mo) | 🟢 Recent (<3mo)"
+    gum style --foreground 147 "📦 USER (safe) | 🔧 SYSTEM (caution!)"
     gum style --foreground 226 "▶ Navigate | Space to select | Enter to confirm"
     echo ""
 
@@ -1139,10 +1186,30 @@ run_gum_uninstaller() {
         return
     fi
 
-    # Extract package names from selected items (remove size and age info)
-    # Format is: package_name (size) | age
+    # Extract package names from selected items (remove size, category, and age info)
+    # Format is: package_name [CATEGORY] (size) | age emoji
     local package_names=$(echo "$selected" | awk '{print $1}')
     local package_count=$(echo "$package_names" | wc -l)
+
+    # Check if any SYSTEM packages are selected and warn
+    local has_system=false
+    echo "$selected" | grep -q "\[SYSTEM\]" && has_system=true
+
+    if [[ "$has_system" == true ]]; then
+        echo ""
+        gum style --foreground 196 --bold "⚠️  WARNING: System Packages Selected!"
+        gum style --foreground 226 "You have selected SYSTEM packages. Removing these may:"
+        gum style --foreground 226 "  • Break system functionality"
+        gum style --foreground 226 "  • Prevent system updates"
+        gum style --foreground 226 "  • Cause boot failures"
+        echo ""
+
+        if ! gum confirm "Do you understand the risks and want to continue?"; then
+            gum style --foreground 147 "Uninstall cancelled for safety."
+            return
+        fi
+        echo ""
+    fi
 
     # If only one package selected, show detailed info
     if [[ $package_count -eq 1 ]]; then
@@ -1151,7 +1218,7 @@ run_gum_uninstaller() {
         echo ""
         apt show "$package_names" 2>/dev/null | head -20
     else
-        # Multiple packages - show list
+        # Multiple packages - show list with categories and colors
         echo ""
         gum style --foreground 212 --bold "Selected Packages ($package_count):"
         gum style --foreground 147 "═══════════════════════════════════════════════════════════════"
@@ -1168,20 +1235,41 @@ run_gum_uninstaller() {
                 size_display="${pkg_size}K"
             fi
 
-            # Get age indicator
+            # Get age indicator with color
             local age_indicator="Recent"
+            local age_emoji="🟢"
+            local age_color="82"
             local list_file="/var/lib/dpkg/info/${pkg}.list"
             if [[ -f "$list_file" ]]; then
                 local file_time=$(stat -c %Y "$list_file" 2>/dev/null || echo "$(date +%s)")
                 local days_old=$(( ($(date +%s) - file_time) / 86400 ))
                 if [[ $days_old -gt 180 ]]; then
                     age_indicator="Old"
+                    age_emoji="🔴"
+                    age_color="196"
                 elif [[ $days_old -gt 90 ]]; then
                     age_indicator="Aged"
+                    age_emoji="🟡"
+                    age_color="226"
                 fi
             fi
 
-            gum style --foreground 86 "  ☑ $(printf '%-40s' "$pkg") ($(printf '%6s' "$size_display")) | $age_indicator"
+            # Determine category
+            local category="USER"
+            local priority=$(dpkg-query -W -f='${Priority}' "$pkg" 2>/dev/null || echo "optional")
+            local section=$(dpkg-query -W -f='${Section}' "$pkg" 2>/dev/null || echo "")
+            local essential=$(dpkg-query -W -f='${Essential}' "$pkg" 2>/dev/null || echo "no")
+
+            if [[ "$essential" == "yes" ]] || \
+               [[ "$priority" == "required" ]] || \
+               [[ "$priority" == "important" ]] || \
+               [[ "$section" =~ ^(admin|base|libs)$ ]] || \
+               [[ "$pkg" =~ ^(apt|dpkg|systemd|libc|bash|coreutils|init|ubuntu-minimal) ]]; then
+                category="SYSTEM"
+            fi
+
+            # Display with color based on age
+            gum style --foreground "$age_color" "  ☑ $(printf '%-30s' "$pkg") [$(printf '%-6s' "$category")] ($(printf '%6s' "$size_display")) | $age_indicator $age_emoji"
         done
 
         # Calculate total size
