@@ -43,7 +43,7 @@ USAGE:
     $SCRIPT_NAME clean --dry-run    Preview cleanup without execution
     $SCRIPT_NAME clean --force      Clean without confirmation prompts
     $SCRIPT_NAME analyze            Analyze disk usage (requires gum)
-    $SCRIPT_NAME uninstall          Uninstall applications (requires gum)
+    $SCRIPT_NAME uninstall          Uninstall APT/Snap/Flatpak apps (requires gum & fzf)
     $SCRIPT_NAME debloat            Remove bloatware and unnecessary software (requires gum)
     $SCRIPT_NAME swap               Manage swap files for memory (requires gum)
     $SCRIPT_NAME fonts              Install Nerd Fonts for terminal (requires gum)
@@ -56,14 +56,14 @@ EXAMPLES:
     $SCRIPT_NAME clean --dry-run    # See what would be cleaned
     $SCRIPT_NAME clean              # Execute cleanup safely
     $SCRIPT_NAME analyze            # Browse largest directories
-    $SCRIPT_NAME uninstall          # Search and remove packages
+    $SCRIPT_NAME uninstall          # Uninstall APT/Snap/Flatpak packages with fzf
     $SCRIPT_NAME debloat            # Remove snap, bloatware, orphans
     $SCRIPT_NAME swap               # Create/manage swap files
     $SCRIPT_NAME fonts              # Install Nerd Fonts with icons
 
 NEW FEATURES (with gum):
     📁 Disk Analyzer - Interactively browse and clean large directories
-    🗑️  App Uninstaller - Search and thoroughly remove applications
+    🗑️  App Uninstaller - Unified APT/Snap/Flatpak removal with fzf search
     💣 System Debloat - Remove snap packages, GNOME bloatware, orphaned packages
     💾 Swap Manager - Create and manage swap files (2-32GB options)
     🎨 Nerd Fonts - Install developer fonts with icons and glyphs
@@ -1036,103 +1036,176 @@ run_gum_disk_analyzer() {
 run_gum_uninstaller() {
     clear
     gum style --border double --border-foreground 212 --padding "1 2" --align center \
-        "$(gum style --bold --foreground 212 '🗑️  APP UNINSTALLER')"
+        "$(gum style --bold --foreground 212 '🗑️  APP UNINSTALLER (APT + Snap + Flatpak)')"
 
     echo ""
-    gum style --foreground 147 "Loading installed packages with sizes..."
+    gum style --foreground 147 "Loading installed packages from all sources..."
     echo ""
 
-    # Get installed packages with sizes
-    local temp_sizes=$(mktemp)
-
-    # Get package list and calculate sizes
-    gum spin --spinner dot --title "Scanning packages..." -- bash -c "
-        dpkg-query -W -f='\${Package}|\${Installed-Size}\n' | \
-        grep -v '^|' | \
-        sort -t'|' -k2 -n -r > '$temp_sizes'
-    "
-
-    local total_packages=$(wc -l < "$temp_sizes")
-    gum style --foreground 82 "Found $total_packages installed packages"
-    echo ""
-
-    # Format packages with human-readable sizes, age indicators, and categories
+    # Temp files for different package types
+    local temp_apt=$(mktemp)
+    local temp_snap=$(mktemp)
+    local temp_flatpak=$(mktemp)
     local formatted_list=$(mktemp)
     local formatted_user=$(mktemp)
     local formatted_system=$(mktemp)
     local current_time=$(date +%s)
 
-    while IFS='|' read -r pkg size_kb; do
-        if [[ -n "$pkg" && -n "$size_kb" ]]; then
-            # Convert KB to human readable (shorter format for better alignment)
-            if [[ $size_kb -gt 1048576 ]]; then
-                # GB
-                size_display=$(awk "BEGIN {printf \"%.1fG\", $size_kb/1048576}")
-            elif [[ $size_kb -gt 1024 ]]; then
-                # MB
-                size_display=$(awk "BEGIN {printf \"%.0fM\", $size_kb/1024}")
-            else
-                # KB
-                size_display="${size_kb}K"
-            fi
+    # Scan APT packages
+    gum spin --spinner dot --title "Scanning APT packages..." -- bash -c "
+        dpkg-query -W -f='\${Package}|\${Installed-Size}|apt\n' 2>/dev/null | \
+        grep -v '^|' | \
+        sort -t'|' -k2 -n -r > '$temp_apt'
+    "
+    local apt_count=$(wc -l < "$temp_apt" 2>/dev/null || echo "0")
 
-            # Determine package age (Old vs Recent) with color coding
-            local age_indicator="Recent"
-            local age_color="82"  # Green
-            local age_emoji="🟢"
-            local list_file="/var/lib/dpkg/info/${pkg}.list"
+    # Scan Snap packages (if installed)
+    local snap_count=0
+    if command -v snap &> /dev/null; then
+        gum spin --spinner dot --title "Scanning Snap packages..." -- bash -c "
+            snap list 2>/dev/null | tail -n +2 | awk '{
+                name=\$1
+                # Get snap size in bytes, convert to KB
+                cmd=\"du -sk /snap/\" name \" 2>/dev/null | awk '{print \$1}'\"
+                cmd | getline size_kb
+                close(cmd)
+                if (size_kb == \"\") size_kb = \"0\"
+                print name \"|\" size_kb \"|snap\"
+            }' | sort -t'|' -k2 -n -r > '$temp_snap'
+        " 2>/dev/null || touch "$temp_snap"
+        snap_count=$(wc -l < "$temp_snap" 2>/dev/null || echo "0")
+    fi
 
-            if [[ -f "$list_file" ]]; then
-                local file_time=$(stat -c %Y "$list_file" 2>/dev/null || echo "$current_time")
-                local days_old=$(( (current_time - file_time) / 86400 ))
+    # Scan Flatpak packages (if installed)
+    local flatpak_count=0
+    if command -v flatpak &> /dev/null; then
+        gum spin --spinner dot --title "Scanning Flatpak packages..." -- bash -c "
+            flatpak list --app 2>/dev/null | awk -F'\t' '{
+                name=\$2
+                app_id=\$1
+                # Get flatpak size
+                cmd=\"flatpak info --show-size \" app_id \" 2>/dev/null | grep -i 'installed size' | awk '{print \$3}'\"
+                cmd | getline size_str
+                close(cmd)
+                # Convert size to KB (handle MB, GB, KB suffixes)
+                if (size_str ~ /GB/) {
+                    gsub(/GB/, \"\", size_str)
+                    size_kb = size_str * 1048576
+                } else if (size_str ~ /MB/) {
+                    gsub(/MB/, \"\", size_str)
+                    size_kb = size_str * 1024
+                } else if (size_str ~ /kB/) {
+                    gsub(/kB/, \"\", size_str)
+                    size_kb = size_str
+                } else {
+                    size_kb = 0
+                }
+                print app_id \"|\" int(size_kb) \"|flatpak\"
+            }' | sort -t'|' -k2 -n -r > '$temp_flatpak'
+        " 2>/dev/null || touch "$temp_flatpak"
+        flatpak_count=$(wc -l < "$temp_flatpak" 2>/dev/null || echo "0")
+    fi
 
-                if [[ $days_old -gt 180 ]]; then
-                    age_indicator="Old"
-                    age_color="196"  # Red
-                    age_emoji="🔴"
-                elif [[ $days_old -gt 90 ]]; then
-                    age_indicator="Aged"
-                    age_color="226"  # Yellow
-                    age_emoji="🟡"
+    local total_packages=$((apt_count + snap_count + flatpak_count))
+    gum style --foreground 82 "Found $total_packages packages: $apt_count APT, $snap_count Snap, $flatpak_count Flatpak"
+    echo ""
+
+    # Format packages with human-readable sizes, age indicators, and categories
+    # Process all package types: APT, Snap, Flatpak
+    for pkg_file in "$temp_apt" "$temp_snap" "$temp_flatpak"; do
+        [[ ! -s "$pkg_file" ]] && continue
+
+        while IFS='|' read -r pkg size_kb pkg_type; do
+            if [[ -n "$pkg" && -n "$size_kb" && -n "$pkg_type" ]]; then
+                # Convert KB to human readable
+                if [[ $size_kb -gt 1048576 ]]; then
+                    size_display=$(awk "BEGIN {printf \"%.1fG\", $size_kb/1048576}")
+                elif [[ $size_kb -gt 1024 ]]; then
+                    size_display=$(awk "BEGIN {printf \"%.0fM\", $size_kb/1024}")
+                else
+                    size_display="${size_kb}K"
+                fi
+
+                # Package type indicator
+                local type_emoji="📦"  # APT
+                local type_color="147"
+                case "$pkg_type" in
+                    snap)
+                        type_emoji="📮"  # Snap
+                        type_color="214"
+                        ;;
+                    flatpak)
+                        type_emoji="📦"  # Flatpak
+                        type_color="117"
+                        ;;
+                esac
+
+                # Determine package age (for APT only, others default to recent)
+                local age_indicator="Recent"
+                local age_color="82"  # Green
+                local age_emoji="🟢"
+
+                if [[ "$pkg_type" == "apt" ]]; then
+                    local list_file="/var/lib/dpkg/info/${pkg}.list"
+                    if [[ -f "$list_file" ]]; then
+                        local file_time=$(stat -c %Y "$list_file" 2>/dev/null || echo "$current_time")
+                        local days_old=$(( (current_time - file_time) / 86400 ))
+
+                        if [[ $days_old -gt 180 ]]; then
+                            age_indicator="Old"
+                            age_color="196"  # Red
+                            age_emoji="🔴"
+                        elif [[ $days_old -gt 90 ]]; then
+                            age_indicator="Aged"
+                            age_color="226"  # Yellow
+                            age_emoji="🟡"
+                        fi
+                    fi
+                fi
+
+                # Determine category: USER or SYSTEM (APT only, others are USER)
+                local category="USER"
+                local is_system=false
+
+                if [[ "$pkg_type" == "apt" ]]; then
+                    local priority=$(dpkg-query -W -f='${Priority}' "$pkg" 2>/dev/null || echo "optional")
+                    local section=$(dpkg-query -W -f='${Section}' "$pkg" 2>/dev/null || echo "")
+                    local essential=$(dpkg-query -W -f='${Essential}' "$pkg" 2>/dev/null || echo "no")
+
+                    if [[ "$essential" == "yes" ]] || \
+                       [[ "$priority" == "required" ]] || \
+                       [[ "$priority" == "important" ]] || \
+                       [[ "$section" =~ ^(admin|base|libs)$ ]] || \
+                       [[ "$pkg" =~ ^(apt|dpkg|systemd|libc|bash|coreutils|init|ubuntu-minimal) ]]; then
+                        category="SYSTEM"
+                        is_system=true
+                    fi
+                fi
+
+                # Format: [TYPE] package_name [CATEGORY] (size) | age emoji
+                local type_label=""
+                case "$pkg_type" in
+                    apt) type_label="APT" ;;
+                    snap) type_label="SNAP" ;;
+                    flatpak) type_label="FLAT" ;;
+                esac
+
+                local line=$(printf "[%-4s] %-30s [%-6s] (%6s) | %-6s %s|%s" \
+                    "$type_label" "$pkg" "$category" "$size_display" "$age_indicator" "$age_emoji" "$pkg_type")
+
+                # Separate USER and SYSTEM apps for sorting
+                if [[ "$is_system" == false ]]; then
+                    echo "$line|$age_color" >> "$formatted_user"
+                else
+                    echo "$line|$age_color" >> "$formatted_system"
                 fi
             fi
-
-            # Determine package category: USER or SYSTEM
-            local category="USER"
-            local category_emoji="📦"
-            local is_system=false
-
-            # Check if package is system/essential
-            local priority=$(dpkg-query -W -f='${Priority}' "$pkg" 2>/dev/null || echo "optional")
-            local section=$(dpkg-query -W -f='${Section}' "$pkg" 2>/dev/null || echo "")
-            local essential=$(dpkg-query -W -f='${Essential}' "$pkg" 2>/dev/null || echo "no")
-
-            # System package detection (combined method)
-            if [[ "$essential" == "yes" ]] || \
-               [[ "$priority" == "required" ]] || \
-               [[ "$priority" == "important" ]] || \
-               [[ "$section" =~ ^(admin|base|libs)$ ]] || \
-               [[ "$pkg" =~ ^(apt|dpkg|systemd|libc|bash|coreutils|init|ubuntu-minimal) ]]; then
-                category="SYSTEM"
-                category_emoji="🔧"
-                is_system=true
-            fi
-
-            # Format: package_name [CATEGORY] (size) | age emoji
-            local line=$(printf "%-35s [%-6s] (%6s) | %-6s %s" "$pkg" "$category" "$size_display" "$age_indicator" "$age_emoji")
-
-            # Separate USER and SYSTEM apps for sorting
-            if [[ "$is_system" == false ]]; then
-                echo "$line|$age_color" >> "$formatted_user"
-            else
-                echo "$line|$age_color" >> "$formatted_system"
-            fi
-        fi
-    done < "$temp_sizes"
+        done < "$pkg_file"
+    done
 
     # Combine: USER apps first, then SYSTEM apps
     cat "$formatted_user" "$formatted_system" > "$formatted_list"
-    rm -f "$formatted_user" "$formatted_system"
+    rm -f "$formatted_user" "$formatted_system" "$temp_apt" "$temp_snap" "$temp_flatpak"
 
     # Use fzf for fast search and multi-select
     gum style --foreground 147 "🚀 Optimized with fzf - Type to search, Tab to select, Enter to confirm"
@@ -1141,8 +1214,8 @@ run_gum_uninstaller() {
 
     # Apply ANSI colors to lines for fzf display
     local colored_list=$(mktemp)
-    while IFS='|' read -r line color_code; do
-        echo -e "\033[38;5;${color_code}m${line}\033[0m"
+    while IFS='|' read -r line pkg_type color_code; do
+        echo -e "\033[38;5;${color_code}m${line}\033[0m|${pkg_type}"
     done < "$formatted_list" > "$colored_list"
 
     # Use fzf for combined search + multi-select (much faster than gum)
@@ -1152,31 +1225,40 @@ run_gum_uninstaller() {
         --ansi \
         --prompt="🔍 Search & Select > " \
         --header="Tab/Shift-Tab: select | Ctrl-A: all | Ctrl-D: deselect | Enter: confirm
-─────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────
+[APT] = APT package | [SNAP] = Snap package | [FLAT] = Flatpak package
 🔴 Old (>6mo) | 🟡 Aged (3-6mo) | 🟢 Recent (<3mo)
-📦 USER (safe to remove) | 🔧 SYSTEM (use caution!)
-💡 Use fuzzy search: 'firefox old' finds old Firefox packages" \
+📦 USER (safe) | 🔧 SYSTEM (caution!)
+💡 Fuzzy search: 'snap firefox' or 'flat vlc' or 'apt old'" \
         --bind 'ctrl-a:select-all' \
         --bind 'ctrl-d:deselect-all' \
         --bind 'ctrl-/:toggle-preview' \
-        --preview 'apt show $(echo {} | awk "{print \$1}") 2>/dev/null | head -25' \
+        --preview 'pkg_info=$(echo {} | sed "s/|.*//"); pkg_name=$(echo "$pkg_info" | awk "{print \$2}"); pkg_type=$(echo {} | awk -F"|" "{print \$NF}"); case "$pkg_type" in apt) apt show "$pkg_name" 2>/dev/null | head -25;; snap) snap info "$pkg_name" 2>/dev/null | head -25;; flatpak) flatpak info "$pkg_name" 2>/dev/null | head -25;; esac' \
         --preview-window 'right:50%:wrap:hidden' \
         --height 100% \
         --layout reverse \
         --border rounded \
         --info inline)
 
-    rm -f "$temp_sizes" "$formatted_list" "$colored_list"
+    rm -f "$formatted_list" "$colored_list"
 
     if [[ -z "$selected" ]]; then
         gum style --foreground 147 "No packages selected."
         return
     fi
 
-    # Extract package names from selected items (remove size, category, and age info)
-    # Format is: package_name [CATEGORY] (size) | age emoji
-    local package_names=$(echo "$selected" | awk '{print $1}')
-    local package_count=$(echo "$package_names" | wc -l)
+    # Extract package names and types from selected items
+    # Format is: [TYPE] package_name [CATEGORY] (size) | age emoji|pkg_type
+    local packages_info=$(mktemp)
+    echo "$selected" | while IFS= read -r line; do
+        # Remove ANSI color codes and extract package info
+        local clean_line=$(echo "$line" | sed 's/\x1b\[[0-9;]*m//g')
+        local pkg_name=$(echo "$clean_line" | awk '{print $2}')
+        local pkg_type=$(echo "$clean_line" | awk -F'|' '{print $NF}')
+        echo "$pkg_name|$pkg_type"
+    done > "$packages_info"
+
+    local package_count=$(wc -l < "$packages_info")
 
     # Check if any SYSTEM packages are selected and warn
     local has_system=false
@@ -1198,154 +1280,108 @@ run_gum_uninstaller() {
         echo ""
     fi
 
-    # If only one package selected, show detailed info
-    if [[ $package_count -eq 1 ]]; then
-        echo ""
-        gum style --foreground 212 --bold "Selected Package Details:"
-        echo ""
-        apt show "$package_names" 2>/dev/null | head -20
-    else
-        # Multiple packages - show list with categories and colors
-        echo ""
-        gum style --foreground 212 --bold "Selected Packages ($package_count):"
-        gum style --foreground 147 "═══════════════════════════════════════════════════════════════"
-        echo ""
-        echo "$package_names" | while IFS= read -r pkg; do
-            local pkg_size=$(dpkg-query -W -f='${Installed-Size}' "$pkg" 2>/dev/null || echo "0")
+    # Show selected packages summary
+    echo ""
+    gum style --foreground 212 --bold "Selected Packages ($package_count):"
+    gum style --foreground 147 "═══════════════════════════════════════════════════════════════"
+    echo ""
 
-            # Convert to short format
-            if [[ $pkg_size -gt 1048576 ]]; then
-                size_display=$(awk "BEGIN {printf \"%.1fG\", $pkg_size/1048576}")
-            elif [[ $pkg_size -gt 1024 ]]; then
-                size_display=$(awk "BEGIN {printf \"%.0fM\", $pkg_size/1024}")
-            else
-                size_display="${pkg_size}K"
-            fi
+    # Display selected packages with their types
+    while IFS='|' read -r pkg pkg_type; do
+        local type_label=""
+        local type_color="147"
+        case "$pkg_type" in
+            apt) type_label="[APT]"; type_color="147" ;;
+            snap) type_label="[SNAP]"; type_color="214" ;;
+            flatpak) type_label="[FLAT]"; type_color="117" ;;
+        esac
 
-            # Get age indicator with color
-            local age_indicator="Recent"
-            local age_emoji="🟢"
-            local age_color="82"
-            local list_file="/var/lib/dpkg/info/${pkg}.list"
-            if [[ -f "$list_file" ]]; then
-                local file_time=$(stat -c %Y "$list_file" 2>/dev/null || echo "$(date +%s)")
-                local days_old=$(( ($(date +%s) - file_time) / 86400 ))
-                if [[ $days_old -gt 180 ]]; then
-                    age_indicator="Old"
-                    age_emoji="🔴"
-                    age_color="196"
-                elif [[ $days_old -gt 90 ]]; then
-                    age_indicator="Aged"
-                    age_emoji="🟡"
-                    age_color="226"
-                fi
-            fi
-
-            # Determine category
-            local category="USER"
-            local priority=$(dpkg-query -W -f='${Priority}' "$pkg" 2>/dev/null || echo "optional")
-            local section=$(dpkg-query -W -f='${Section}' "$pkg" 2>/dev/null || echo "")
-            local essential=$(dpkg-query -W -f='${Essential}' "$pkg" 2>/dev/null || echo "no")
-
-            if [[ "$essential" == "yes" ]] || \
-               [[ "$priority" == "required" ]] || \
-               [[ "$priority" == "important" ]] || \
-               [[ "$section" =~ ^(admin|base|libs)$ ]] || \
-               [[ "$pkg" =~ ^(apt|dpkg|systemd|libc|bash|coreutils|init|ubuntu-minimal) ]]; then
-                category="SYSTEM"
-            fi
-
-            # Display with color based on age
-            gum style --foreground "$age_color" "  ☑ $(printf '%-30s' "$pkg") [$(printf '%-6s' "$category")] ($(printf '%6s' "$size_display")) | $age_indicator $age_emoji"
-        done
-
-        # Calculate total size
-        echo ""
-        local total_size=0
-        echo "$package_names" | while IFS= read -r pkg; do
-            local pkg_size=$(dpkg-query -W -f='${Installed-Size}' "$pkg" 2>/dev/null || echo "0")
-            echo "$pkg_size"
-        done | awk '{sum+=$1} END {
-            if (sum > 1048576) {
-                printf "%.1fG", sum/1048576
-            } else if (sum > 1024) {
-                printf "%.0fM", sum/1024
-            } else {
-                printf "%dK", sum
-            }
-        }' | xargs -I {} gum style --foreground 212 --bold "Total size to free: {}"
-    fi
-
+        gum style --foreground "$type_color" "  ☑ $type_label $pkg"
+    done < "$packages_info"
     echo ""
 
     # Confirm uninstallation
-    if [[ $package_count -eq 1 ]]; then
-        if ! gum confirm "Uninstall $package_names and remove config files?"; then
-            gum style --foreground 226 "Uninstall cancelled."
-            return
-        fi
-    else
-        if ! gum confirm "Uninstall $package_count packages and remove their config files?"; then
-            gum style --foreground 226 "Uninstall cancelled."
-            return
-        fi
+    if ! gum confirm "Uninstall $package_count package(s) and remove their config files?"; then
+        gum style --foreground 226 "Uninstall cancelled."
+        rm -f "$packages_info"
+        return
     fi
 
     echo ""
 
-    # Uninstall packages
+    # Uninstall packages based on type
     local success_count=0
     local fail_count=0
 
-    if [[ $package_count -eq 1 ]]; then
-        # Single package - show simple progress
-        gum spin --spinner dot --title "Uninstalling $package_names..." -- \
-            sudo apt purge -y "$package_names" 2>&1 | tee /tmp/fub-uninstall.log
+    while IFS='|' read -r pkg pkg_type; do
+        case "$pkg_type" in
+            apt)
+                gum spin --spinner dot --title "Uninstalling APT package: $pkg..." -- \
+                    sudo apt purge -y "$pkg" 2>&1 | tee -a /tmp/fub-uninstall.log
 
-        if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
-            ((success_count++))
-        else
-            ((fail_count++))
-        fi
-    else
-        # Multiple packages - uninstall with progress
-        echo "$package_names" | while IFS= read -r pkg; do
-            gum spin --spinner dot --title "Uninstalling $pkg..." -- \
-                sudo apt purge -y "$pkg" 2>&1 | tee -a /tmp/fub-uninstall.log
+                if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
+                    gum style --foreground 82 "✓ Removed [APT]: $pkg"
+                    ((success_count++))
+                else
+                    gum style --foreground 196 "✗ Failed [APT]: $pkg"
+                    ((fail_count++))
+                fi
+                ;;
+            snap)
+                gum spin --spinner dot --title "Uninstalling Snap package: $pkg..." -- \
+                    sudo snap remove "$pkg" 2>&1 | tee -a /tmp/fub-uninstall.log
 
-            if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
-                gum style --foreground 82 "✓ Removed: $pkg"
-            else
-                gum style --foreground 196 "✗ Failed: $pkg"
-            fi
-        done
+                if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
+                    gum style --foreground 82 "✓ Removed [SNAP]: $pkg"
+                    ((success_count++))
+                else
+                    gum style --foreground 196 "✗ Failed [SNAP]: $pkg"
+                    ((fail_count++))
+                fi
+                ;;
+            flatpak)
+                gum spin --spinner dot --title "Uninstalling Flatpak package: $pkg..." -- \
+                    sudo flatpak uninstall -y "$pkg" 2>&1 | tee -a /tmp/fub-uninstall.log
 
-        # Count successes and failures from log
-        success_count=$(echo "$package_names" | wc -l)
+                if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
+                    gum style --foreground 82 "✓ Removed [FLATPAK]: $pkg"
+                    ((success_count++))
+                else
+                    gum style --foreground 196 "✗ Failed [FLATPAK]: $pkg"
+                    ((fail_count++))
+                fi
+                ;;
+        esac
+    done < "$packages_info"
+
+    # Clean up dependencies (APT only)
+    echo ""
+    if grep -q "|apt$" "$packages_info"; then
+        gum spin --spinner dot --title "Cleaning up unused APT dependencies..." -- \
+            sudo apt autoremove -y 2>&1 | tee -a /tmp/fub-uninstall.log
     fi
 
-    # Run autoremove to clean up dependencies
-    echo ""
-    gum spin --spinner dot --title "Cleaning up unused dependencies..." -- \
-        sudo apt autoremove -y 2>&1 | tee -a /tmp/fub-uninstall.log
+    # Clean up unused Flatpak runtimes
+    if grep -q "|flatpak$" "$packages_info"; then
+        gum spin --spinner dot --title "Cleaning up unused Flatpak runtimes..." -- \
+            sudo flatpak uninstall --unused -y 2>&1 | tee -a /tmp/fub-uninstall.log
+    fi
 
+    rm -f "$packages_info"
     echo ""
 
     # Show results
-    if [[ $package_count -eq 1 ]]; then
-        if [[ $success_count -eq 1 ]]; then
-            gum style --border rounded --border-foreground 82 --padding "1 2" \
-                "$(gum style --foreground 82 --bold '✅ Package uninstalled successfully!')"
-        else
-            gum style --border rounded --border-foreground 196 --padding "1 2" \
-                "$(gum style --foreground 196 --bold '❌ Uninstallation failed')"
-            gum style --foreground 147 "Check log: /tmp/fub-uninstall.log"
-        fi
-    else
+    if [[ $success_count -gt 0 ]]; then
         gum style --border rounded --border-foreground 82 --padding "1 2" \
-            "$(gum style --foreground 82 --bold "✅ $package_count packages uninstalled!")"
-        gum style --foreground 147 "Log saved: /tmp/fub-uninstall.log"
+            "$(gum style --foreground 82 --bold "✅ Successfully uninstalled $success_count package(s)!")"
     fi
+
+    if [[ $fail_count -gt 0 ]]; then
+        gum style --border rounded --border-foreground 196 --padding "1 2" \
+            "$(gum style --foreground 196 --bold "❌ Failed to uninstall $fail_count package(s)")"
+    fi
+
+    gum style --foreground 147 "Full log saved: /tmp/fub-uninstall.log"
 }
 
 # =============================================================================
