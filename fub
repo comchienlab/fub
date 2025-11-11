@@ -799,135 +799,414 @@ show_help_screen() {
 show_gum_dashboard() {
     clear
 
-    # System info banner
-    local ubuntu_ver=$(detect_ubuntu_version)
-    local disk_info=$(get_disk_info)
+    # ASCII Art Header inspired by Mole
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
 
     gum style \
-        --border double \
-        --border-foreground 212 \
-        --padding "1 2" \
-        --width 70 \
+        --foreground 212 \
+        --bold \
         --align center \
-        "$(gum style --foreground 212 --bold 'FUB DASHBOARD')" \
-        "$(gum style --foreground 147 'Dig deep like a mole to clean your Ubuntu')" \
-        "" \
-        "$(gum style --foreground 86 "Ubuntu $ubuntu_ver | $disk_info")"
+        --width 80 \
+        "║                                                                           ║"
+
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                    🐹  FUB - Filesystem Ubuntu Buddy                     ║"
+
+    gum style \
+        --foreground 147 \
+        --align center \
+        --width 80 \
+        "║                   Dig deep like a mole to clean Ubuntu                   ║"
+
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                                                                           ║"
+
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
 
     echo ""
 
-    # Interactive menu
+    # System Information Panel
+    local ubuntu_ver=$(detect_ubuntu_version)
+    local kernel_ver=$(uname -r)
+    local disk_info=$(get_disk_info)
+    local hostname=$(hostname)
+    local uptime_info=$(uptime -p 2>/dev/null | sed 's/up //' || echo "N/A")
+
+    gum style \
+        --border rounded \
+        --border-foreground 86 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 86 --bold '  System Information')" \
+        "" \
+        "$(gum style --foreground 147 "  💻 Host      : $hostname")" \
+        "$(gum style --foreground 147 "  🐧 OS        : Ubuntu $ubuntu_ver")" \
+        "$(gum style --foreground 147 "  ⚙️  Kernel    : $kernel_ver")" \
+        "$(gum style --foreground 147 "  💾 Disk      : $disk_info")" \
+        "$(gum style --foreground 147 "  ⏱️  Uptime    : $uptime_info")"
+
+    echo ""
+
+    # Main Menu Header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╭─────────────────────────  MAIN MENU  ─────────────────────────╮"
+
+    echo ""
+
+    # Interactive menu with enhanced styling
     local choice
     choice=$(gum choose \
-        --header "$(gum style --foreground 212 --bold 'Main Menu')" \
-        --cursor "→ " \
+        --cursor "▶ " \
         --cursor-prefix "  " \
         --selected-prefix "  " \
         --height 15 \
-        "🧹  Clean System (with preview)" \
-        "🚀  Quick Clean (skip preview)" \
-        "📊  Dry-Run Only (analyze)" \
-        "📁  Disk Analyzer" \
-        "🗑️  Uninstall Apps" \
-        "💣  System Debloat" \
-        "💾  Swap Manager" \
-        "🎨  Nerd Fonts" \
-        "⚙️  Configure Profiles" \
-        "ℹ️  System Status" \
-        "❓  Help & Documentation" \
-        "🚪  Exit")
+        --header "" \
+        "  🧹  Clean System          Deep cleanup with preview before execution" \
+        "  🚀  Quick Clean           Fast cleanup without preview (dry-run first)" \
+        "  📊  Analyze Only          Calculate cleanup size without changes" \
+        "" \
+        "  📁  Disk Analyzer         Browse and analyze disk usage by directory" \
+        "  🗑️  Uninstall Apps        Remove APT/Snap/Flatpak packages with fzf" \
+        "  💣  System Debloat        Remove bloatware and unnecessary packages" \
+        "" \
+        "  💾  Swap Manager          Create or manage swap files (2-32GB)" \
+        "  🎨  Nerd Fonts            Install developer fonts with icons" \
+        "  ⚙️  Configure             Setup cleanup profiles and preferences" \
+        "" \
+        "  ℹ️  System Status         View detailed system information" \
+        "  ❓  Help                  Show documentation and usage guide" \
+        "  🚪  Exit                  Quit FUB")
+
+    echo ""
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╰───────────────────────────────────────────────────────────────╯"
+    echo ""
+
+    # Handle empty selection (separator lines)
+    if [[ -z "$choice" ]]; then
+        show_gum_dashboard
+        return
+    fi
 
     case "$choice" in
-        "🧹"*) run_gum_cleanup_with_preview ;;
-        "🚀"*) run_gum_quick_clean ;;
-        "📊"*) run_gum_dry_run_only ;;
-        "📁"*) run_gum_disk_analyzer ;;
-        "🗑️"*) run_gum_uninstaller ;;
-        "💣"*) run_gum_debloat ;;
-        "💾"*) run_gum_swap_manager ;;
-        "🎨"*) run_gum_font_installer ;;
-        "⚙️"*) run_gum_configure_profiles ;;
-        "ℹ️"*) show_gum_system_status ;;
-        "❓"*) show_gum_help_screen ;;
-        "🚪"*)
-            gum style --foreground 212 "Goodbye! 👋"
+        *"Clean System"*) run_gum_cleanup_with_preview ;;
+        *"Quick Clean"*) run_gum_quick_clean ;;
+        *"Analyze Only"*) run_gum_dry_run_only ;;
+        *"Disk Analyzer"*) run_gum_disk_analyzer ;;
+        *"Uninstall Apps"*) run_gum_uninstaller ;;
+        *"System Debloat"*) run_gum_debloat ;;
+        *"Swap Manager"*) run_gum_swap_manager ;;
+        *"Nerd Fonts"*) run_gum_font_installer ;;
+        *"Configure"*) run_gum_configure_profiles ;;
+        *"System Status"*) show_gum_system_status ;;
+        *"Help"*) show_gum_help_screen ;;
+        *"Exit"*)
+            clear
+            gum style \
+                --foreground 212 \
+                --bold \
+                --align center \
+                "╔═══════════════════════════════════════════════╗"
+            gum style \
+                --foreground 147 \
+                --align center \
+                "║                                               ║"
+            gum style \
+                --foreground 86 \
+                --align center \
+                "║      Thank you for using FUB! 🐹 👋          ║"
+            gum style \
+                --foreground 147 \
+                --align center \
+                "║     Your Ubuntu is now cleaner and faster    ║"
+            gum style \
+                --foreground 147 \
+                --align center \
+                "║                                               ║"
+            gum style \
+                --foreground 212 \
+                --bold \
+                --align center \
+                "╚═══════════════════════════════════════════════╝"
+            echo ""
             exit 0
+            ;;
+        *)
+            show_gum_dashboard
+            return
             ;;
     esac
 
-    # Return to menu
+    # Return to menu with styled prompt
     echo ""
-    gum style --foreground 86 "Press Enter to return to main menu..."
+    echo ""
+    gum style \
+        --foreground 86 \
+        --align center \
+        "─────────────────────────────────────────────────────"
+    gum style \
+        --foreground 147 \
+        --align center \
+        "Press Enter to return to main menu..."
     read -r
     show_gum_dashboard
 }
 
 show_gum_system_status() {
     clear
-    gum style --border double --border-foreground 212 --padding "1 2" --align center \
-        "$(gum style --bold --foreground 212 'SYSTEM STATUS')"
+
+    # Header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                          ℹ️  SYSTEM STATUS                                ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
 
     echo ""
 
-    gum style --foreground 147 --bold "System Information:"
-    echo "  Ubuntu Version: $(detect_ubuntu_version)"
-    echo "  Kernel: $(uname -r)"
-    echo "  Architecture: $(uname -m)"
-    echo "  Uptime: $(uptime -p 2>/dev/null || echo "N/A")"
+    # System Information
+    local ubuntu_ver=$(detect_ubuntu_version)
+    local kernel_ver=$(uname -r)
+    local arch=$(uname -m)
+    local uptime_info=$(uptime -p 2>/dev/null | sed 's/up //' || echo "N/A")
+    local hostname=$(hostname)
+    local user=$(whoami)
+
+    gum style \
+        --border rounded \
+        --border-foreground 86 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 86 --bold '▶ System Information')" \
+        "" \
+        "$(gum style --foreground 147 "  💻 Hostname    : $hostname")" \
+        "$(gum style --foreground 147 "  👤 User        : $user")" \
+        "$(gum style --foreground 147 "  🐧 OS          : Ubuntu $ubuntu_ver")" \
+        "$(gum style --foreground 147 "  ⚙️  Kernel      : $kernel_ver")" \
+        "$(gum style --foreground 147 "  🏗️  Architecture: $arch")" \
+        "$(gum style --foreground 147 "  ⏱️  Uptime      : $uptime_info")"
+
     echo ""
 
-    gum style --foreground 147 --bold "Disk Usage:"
-    df -h | grep -E '^/dev/' | while read -r line; do
-        echo "  $line"
+    # Disk Usage
+    gum style \
+        --border rounded \
+        --border-foreground 212 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 212 --bold '▶ Disk Usage')" \
+        ""
+
+    df -h | grep -E '^/dev/' | while IFS= read -r line; do
+        local dev=$(echo "$line" | awk '{print $1}')
+        local size=$(echo "$line" | awk '{print $2}')
+        local used=$(echo "$line" | awk '{print $3}')
+        local avail=$(echo "$line" | awk '{print $4}')
+        local percent=$(echo "$line" | awk '{print $5}')
+        local mount=$(echo "$line" | awk '{print $6}')
+
+        echo "  📊 $mount"
+        echo "     Size: $size | Used: $used | Available: $avail | Usage: $percent"
+        echo ""
     done
+
+    # Memory Usage
+    gum style \
+        --border rounded \
+        --border-foreground 117 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 117 --bold '▶ Memory Usage')" \
+        ""
+
+    local mem_total=$(free -h | awk '/^Mem:/ {print $2}')
+    local mem_used=$(free -h | awk '/^Mem:/ {print $3}')
+    local mem_free=$(free -h | awk '/^Mem:/ {print $4}')
+    local mem_percent=$(free | awk '/^Mem:/ {printf "%.1f%%", ($3/$2)*100}')
+
+    local swap_total=$(free -h | awk '/^Swap:/ {print $2}')
+    local swap_used=$(free -h | awk '/^Swap:/ {print $3}')
+    local swap_free=$(free -h | awk '/^Swap:/ {print $4}')
+
+    echo "  💾 RAM"
+    echo "     Total: $mem_total | Used: $mem_used | Free: $mem_free | Usage: $mem_percent"
+    echo ""
+    echo "  💿 Swap"
+    echo "     Total: $swap_total | Used: $swap_used | Free: $swap_free"
+
     echo ""
 
-    gum style --foreground 147 --bold "Memory Usage:"
-    free -h | grep -E '^Mem:|^Swap:' | while read -r line; do
-        echo "  $line"
-    done
-    echo ""
+    # FUB Status
+    gum style \
+        --border rounded \
+        --border-foreground 226 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 226 --bold '▶ FUB Status')" \
+        "" \
+        "$(gum style --foreground 147 "  📦 Version     : $VERSION")" \
+        "$(gum style --foreground 147 "  🎨 Gum         : $(if command -v gum >/dev/null 2>&1; then echo "✅ Installed ($(gum --version 2>/dev/null | head -1 || echo 'unknown'))"; else echo "❌ Not installed"; fi)")" \
+        "$(gum style --foreground 147 "  🔍 Fzf         : $(if command -v fzf >/dev/null 2>&1; then echo "✅ Installed ($(fzf --version 2>/dev/null | awk '{print $1}' || echo 'unknown'))"; else echo "❌ Not installed"; fi)")" \
+        "$(gum style --foreground 147 "  🛠️  Install Path: $INSTALL_DIR/fub $(if [[ -x "$INSTALL_DIR/fub" ]]; then echo "✅"; else echo "❌"; fi)")"
 
-    gum style --foreground 147 --bold "FUB Status:"
-    echo "  Version: $VERSION"
-    echo "  Gum: $(if command -v gum >/dev/null 2>&1; then echo "✅ Installed"; else echo "❌ Not installed"; fi)"
-    echo "  Installation: $(if [[ -x "$INSTALL_DIR/fub" ]]; then echo "✅ Installed"; else echo "❌ Not found"; fi)"
     echo ""
 }
 
 show_gum_help_screen() {
     clear
-    gum style --border double --border-foreground 212 --padding "1 2" --align center \
-        "$(gum style --bold --foreground 212 'HELP & DOCUMENTATION')"
+
+    # Header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                      ❓  HELP & DOCUMENTATION                             ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
 
     echo ""
 
-    gum style --foreground 147 --bold "What is FUB?"
-    echo "FUB (Filesystem Ubuntu Buddy) is a terminal-based cleanup utility"
-    echo "for Ubuntu, inspired by Mole for macOS. It helps you reclaim disk"
-    echo "space by cleaning system caches, old kernels, and temporary files."
+    # What is FUB?
+    gum style \
+        --border rounded \
+        --border-foreground 86 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 86 --bold '▶ What is FUB?')" \
+        "" \
+        "$(gum style --foreground 147 "  FUB (Filesystem Ubuntu Buddy) is a powerful terminal-based cleanup")" \
+        "$(gum style --foreground 147 "  utility for Ubuntu, inspired by Mole for macOS. It helps you reclaim")" \
+        "$(gum style --foreground 147 "  disk space by deep cleaning system caches, old kernels, logs, and")" \
+        "$(gum style --foreground 147 "  temporary files with a beautiful interactive interface.")"
+
     echo ""
 
-    gum style --foreground 147 --bold "Cleanup Categories:"
-    echo "  🧹 APT Cache - Old package files"
-    echo "  🗂️  Old Kernels - Previous kernel versions (keeps current + 1)"
-    echo "  📋 systemd Journal - System logs"
-    echo "  🌐 Browser Caches - Firefox, Chrome, Chromium"
-    echo "  💾 User Caches - Application caches in ~/.cache/"
-    echo "  🗑️  Temp Files - Old temporary files"
+    # Cleanup Categories
+    gum style \
+        --border rounded \
+        --border-foreground 212 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 212 --bold '▶ Cleanup Categories')" \
+        "" \
+        "$(gum style --foreground 147 "  🧹 APT Cache       : Old package files from /var/cache/apt/")" \
+        "$(gum style --foreground 147 "  🗂️  Old Kernels     : Previous kernel versions (keeps current + 1)")" \
+        "$(gum style --foreground 147 "  📋 systemd Journal : System logs (vacuum to configurable size)")" \
+        "$(gum style --foreground 147 "  🌐 Browser Caches  : Firefox, Chrome, Chromium, Edge cache files")" \
+        "$(gum style --foreground 147 "  💾 User Caches     : Application caches in ~/.cache/ directory")" \
+        "$(gum style --foreground 147 "  🗑️  Temp Files      : Old temporary files from /tmp and /var/tmp")"
+
     echo ""
 
-    gum style --foreground 147 --bold "New Features (Gum-Enhanced):"
-    echo "  📁 Disk Analyzer - Interactive directory browser"
-    echo "  🗑️  App Uninstaller - Search and remove packages"
-    echo "  ⚙️  Profiles - Desktop, Server, or Minimal cleanup modes"
+    # New Features
+    gum style \
+        --border rounded \
+        --border-foreground 117 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 117 --bold '▶ Enhanced Features (with gum)')" \
+        "" \
+        "$(gum style --foreground 147 "  📁 Disk Analyzer   : Interactively browse and analyze disk usage")" \
+        "$(gum style --foreground 147 "  🗑️  App Uninstaller : Search and remove APT/Snap/Flatpak packages")" \
+        "$(gum style --foreground 147 "  💣 System Debloat  : Remove bloatware and unnecessary software")" \
+        "$(gum style --foreground 147 "  💾 Swap Manager    : Create and manage swap files (2-32GB)")" \
+        "$(gum style --foreground 147 "  🎨 Nerd Fonts      : Install developer fonts with icons")" \
+        "$(gum style --foreground 147 "  ⚙️  Profiles        : Desktop, Server, or Minimal cleanup modes")"
+
     echo ""
 
-    gum style --foreground 147 --bold "Safety Features:"
-    echo "  ✅ Never removes current kernel"
-    echo "  ✅ Dry-run mode shows exactly what will be cleaned"
-    echo "  ✅ Explicit confirmations for all operations"
-    echo "  ✅ Skips cleanup if APT is locked"
+    # Safety Features
+    gum style \
+        --border rounded \
+        --border-foreground 226 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 226 --bold '▶ Safety Features')" \
+        "" \
+        "$(gum style --foreground 82 "  ✅ Never removes current kernel")" \
+        "$(gum style --foreground 82 "  ✅ Dry-run mode shows exactly what will be cleaned")" \
+        "$(gum style --foreground 82 "  ✅ Explicit confirmations for all operations")" \
+        "$(gum style --foreground 82 "  ✅ Skips cleanup if APT is locked")" \
+        "$(gum style --foreground 82 "  ✅ Checks if browsers are running before cleaning caches")" \
+        "$(gum style --foreground 82 "  ✅ Comprehensive logging of all operations")"
+
+    echo ""
+
+    # Quick Commands
+    gum style \
+        --border rounded \
+        --border-foreground 147 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 147 --bold '▶ Quick Commands')" \
+        "" \
+        "$(gum style --foreground 86 "  fub                : Launch interactive dashboard")" \
+        "$(gum style --foreground 86 "  fub clean          : Deep clean with preview")" \
+        "$(gum style --foreground 86 "  fub clean --dry-run: Preview cleanup without changes")" \
+        "$(gum style --foreground 86 "  fub uninstall      : Uninstall apps with fzf search")" \
+        "$(gum style --foreground 86 "  fub analyze        : Browse disk usage")" \
+        "$(gum style --foreground 86 "  fub --help         : Show detailed help")"
+
     echo ""
 }
 
