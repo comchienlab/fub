@@ -1216,7 +1216,29 @@ show_gum_help_screen() {
 
 run_gum_cleanup_with_preview() {
     clear
-    gum style --foreground 212 --bold "🔍 Analyzing system for cleanup opportunities..."
+
+    # Clean header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                        SYSTEM CLEANUP WITH PREVIEW                       ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
+
+    echo ""
+    gum style --foreground 147 "Analyzing system for cleanup opportunities..."
     echo ""
 
     # Run dry-run first
@@ -1225,7 +1247,7 @@ run_gum_cleanup_with_preview() {
     echo ""
     if gum confirm "Proceed with cleanup?"; then
         echo ""
-        gum spin --spinner dot --title "Cleaning system..." -- sleep 1
+        gum spin --spinner dot --title "Preparing cleanup..." -- sleep 1
         echo ""
         run_gum_cleanup_execute
     else
@@ -1235,7 +1257,27 @@ run_gum_cleanup_with_preview() {
 
 run_gum_quick_clean() {
     clear
-    gum style --foreground 212 --bold "🚀 Quick Clean Mode"
+
+    # Clean header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                           QUICK CLEAN MODE                               ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
+
     echo ""
     gum style --foreground 244 "This will clean all categories without preview."
     echo ""
@@ -1250,7 +1292,27 @@ run_gum_quick_clean() {
 
 run_gum_dry_run_only() {
     clear
-    gum style --foreground 212 --bold "📊 Dry-Run Analysis"
+
+    # Clean header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                          DRY-RUN ANALYSIS                                ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
+
     echo ""
     run_all_cleanup true
 }
@@ -1264,7 +1326,8 @@ run_gum_cleanup_execute() {
     gum spin --spinner dot --title "Cleaning temp files..." -- bash -c "cleanup_temp_files false" 2>/dev/null || true
 
     echo ""
-    gum style --foreground 82 --bold "✅ Cleanup completed!"
+    gum style --border rounded --border-foreground 82 --padding "1 2" \
+        "$(gum style --foreground 82 --bold '[SUCCESS] Cleanup completed successfully')"
 }
 
 # =============================================================================
@@ -1273,8 +1336,26 @@ run_gum_cleanup_execute() {
 
 run_gum_disk_analyzer() {
     clear
-    gum style --border double --border-foreground 212 --padding "1 2" --align center \
-        "$(gum style --bold --foreground 212 '📁 DISK ANALYZER')"
+
+    # Clean header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                            DISK ANALYZER                                 ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
 
     echo ""
     gum style --foreground 147 "Analyzing disk usage... This may take a moment."
@@ -1314,11 +1395,27 @@ run_gum_disk_analyzer() {
 
 run_gum_uninstaller() {
     clear
-    gum style --border double --border-foreground 212 --padding "1 2" --align center \
-        "$(gum style --bold --foreground 212 '🗑️  APP UNINSTALLER (APT + Snap + Flatpak)')"
 
-    echo ""
-    gum style --foreground 147 "Loading installed packages from all sources..."
+    # Clean header without complex emojis
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                      APP UNINSTALLER - APT + Snap + Flatpak             ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
+
     echo ""
 
     # Temp files for different package types
@@ -1386,7 +1483,8 @@ run_gum_uninstaller() {
     fi
 
     local total_packages=$((apt_count + snap_count + flatpak_count))
-    gum style --foreground 82 "Found $total_packages packages: $apt_count APT, $snap_count Snap, $flatpak_count Flatpak"
+    echo ""
+    gum style --foreground 82 "Found: $apt_count APT + $snap_count Snap + $flatpak_count Flatpak = $total_packages total packages"
     echo ""
 
     # Format packages with human-readable sizes, age indicators, and categories
@@ -1406,23 +1504,19 @@ run_gum_uninstaller() {
                 fi
 
                 # Package type indicator
-                local type_emoji="📦"  # APT
                 local type_color="147"
                 case "$pkg_type" in
                     snap)
-                        type_emoji="📮"  # Snap
                         type_color="214"
                         ;;
                     flatpak)
-                        type_emoji="📦"  # Flatpak
                         type_color="117"
                         ;;
                 esac
 
                 # Determine package age (for APT only, others default to recent)
-                local age_indicator="Recent"
+                local age_indicator="new"
                 local age_color="82"  # Green
-                local age_emoji="🟢"
 
                 if [[ "$pkg_type" == "apt" ]]; then
                     local list_file="/var/lib/dpkg/info/${pkg}.list"
@@ -1431,13 +1525,11 @@ run_gum_uninstaller() {
                         local days_old=$(( (current_time - file_time) / 86400 ))
 
                         if [[ $days_old -gt 180 ]]; then
-                            age_indicator="Old"
+                            age_indicator="old"
                             age_color="196"  # Red
-                            age_emoji="🔴"
                         elif [[ $days_old -gt 90 ]]; then
-                            age_indicator="Aged"
+                            age_indicator="mid"
                             age_color="226"  # Yellow
-                            age_emoji="🟡"
                         fi
                     fi
                 fi
@@ -1461,7 +1553,7 @@ run_gum_uninstaller() {
                     fi
                 fi
 
-                # Format: [TYPE] package_name [CATEGORY] (size) | age emoji
+                # Format: [TYPE] package_name [CATEGORY] (size) | age
                 local type_label=""
                 case "$pkg_type" in
                     apt) type_label="APT" ;;
@@ -1469,8 +1561,8 @@ run_gum_uninstaller() {
                     flatpak) type_label="FLAT" ;;
                 esac
 
-                local line=$(printf "[%-4s] %-30s [%-6s] (%6s) | %-6s %s|%s" \
-                    "$type_label" "$pkg" "$category" "$size_display" "$age_indicator" "$age_emoji" "$pkg_type")
+                local line=$(printf "[%-4s] %-32s [%-6s] %7s  %-3s|%s" \
+                    "$type_label" "$pkg" "$category" "$size_display" "$age_indicator" "$pkg_type")
 
                 # Separate USER and SYSTEM apps for sorting
                 if [[ "$is_system" == false ]]; then
@@ -1487,8 +1579,8 @@ run_gum_uninstaller() {
     rm -f "$formatted_user" "$formatted_system" "$temp_apt" "$temp_snap" "$temp_flatpak"
 
     # Use fzf for fast search and multi-select
-    gum style --foreground 147 "🚀 Optimized with fzf - Type to search, Tab to select, Enter to confirm"
-    gum style --foreground 147 "💡 Showing USER apps first, then SYSTEM apps"
+    gum style --foreground 147 ">> Optimized with fzf - Type to search, Tab to select, Enter to confirm"
+    gum style --foreground 147 ">> Showing USER apps first, then SYSTEM apps"
     echo ""
 
     # Apply ANSI colors to lines for fzf display
@@ -1502,13 +1594,13 @@ run_gum_uninstaller() {
     selected=$(cat "$colored_list" | fzf \
         --multi \
         --ansi \
-        --prompt="🔍 Search & Select > " \
+        --prompt="Search > " \
         --header="Tab/Shift-Tab: select | Ctrl-A: all | Ctrl-D: deselect | Enter: confirm
-──────────────────────────────────────────────────────────────────────
-[APT] = APT package | [SNAP] = Snap package | [FLAT] = Flatpak package
-🔴 Old (>6mo) | 🟡 Aged (3-6mo) | 🟢 Recent (<3mo)
-📦 USER (safe) | 🔧 SYSTEM (caution!)
-💡 Fuzzy search: 'snap firefox' or 'flat vlc' or 'apt old'" \
+────────────────────────────────────────────────────────────────────────────
+[APT]=APT pkg | [SNAP]=Snap pkg | [FLAT]=Flatpak pkg
+old (>6mo) | mid (3-6mo) | new (<3mo)
+[USER]=safe to remove | [SYSTEM]=caution required
+Fuzzy search examples: 'snap firefox' or 'flat vlc' or 'apt old'" \
         --bind 'ctrl-a:select-all' \
         --bind 'ctrl-d:deselect-all' \
         --bind 'ctrl-/:toggle-preview' \
@@ -1545,11 +1637,11 @@ run_gum_uninstaller() {
 
     if [[ "$has_system" == true ]]; then
         echo ""
-        gum style --foreground 196 --bold "⚠️  WARNING: System Packages Selected!"
+        gum style --foreground 196 --bold "WARNING: System Packages Selected!"
         gum style --foreground 226 "You have selected SYSTEM packages. Removing these may:"
-        gum style --foreground 226 "  • Break system functionality"
-        gum style --foreground 226 "  • Prevent system updates"
-        gum style --foreground 226 "  • Cause boot failures"
+        gum style --foreground 226 "  - Break system functionality"
+        gum style --foreground 226 "  - Prevent system updates"
+        gum style --foreground 226 "  - Cause boot failures"
         echo ""
 
         if ! gum confirm "Do you understand the risks and want to continue?"; then
@@ -1562,7 +1654,7 @@ run_gum_uninstaller() {
     # Show selected packages summary
     echo ""
     gum style --foreground 212 --bold "Selected Packages ($package_count):"
-    gum style --foreground 147 "═══════════════════════════════════════════════════════════════"
+    gum style --foreground 147 "────────────────────────────────────────────────────────────────"
     echo ""
 
     # Display selected packages with their types
@@ -1575,7 +1667,7 @@ run_gum_uninstaller() {
             flatpak) type_label="[FLAT]"; type_color="117" ;;
         esac
 
-        gum style --foreground "$type_color" "  ☑ $type_label $pkg"
+        gum style --foreground "$type_color" "  [x] $type_label $pkg"
     done < "$packages_info"
     echo ""
 
@@ -1599,10 +1691,10 @@ run_gum_uninstaller() {
                     sudo apt purge -y "$pkg" 2>&1 | tee -a /tmp/fub-uninstall.log
 
                 if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
-                    gum style --foreground 82 "✓ Removed [APT]: $pkg"
+                    gum style --foreground 82 "[OK] Removed [APT]: $pkg"
                     ((success_count++))
                 else
-                    gum style --foreground 196 "✗ Failed [APT]: $pkg"
+                    gum style --foreground 196 "[FAIL] Failed [APT]: $pkg"
                     ((fail_count++))
                 fi
                 ;;
@@ -1611,10 +1703,10 @@ run_gum_uninstaller() {
                     sudo snap remove "$pkg" 2>&1 | tee -a /tmp/fub-uninstall.log
 
                 if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
-                    gum style --foreground 82 "✓ Removed [SNAP]: $pkg"
+                    gum style --foreground 82 "[OK] Removed [SNAP]: $pkg"
                     ((success_count++))
                 else
-                    gum style --foreground 196 "✗ Failed [SNAP]: $pkg"
+                    gum style --foreground 196 "[FAIL] Failed [SNAP]: $pkg"
                     ((fail_count++))
                 fi
                 ;;
@@ -1623,10 +1715,10 @@ run_gum_uninstaller() {
                     sudo flatpak uninstall -y "$pkg" 2>&1 | tee -a /tmp/fub-uninstall.log
 
                 if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
-                    gum style --foreground 82 "✓ Removed [FLATPAK]: $pkg"
+                    gum style --foreground 82 "[OK] Removed [FLATPAK]: $pkg"
                     ((success_count++))
                 else
-                    gum style --foreground 196 "✗ Failed [FLATPAK]: $pkg"
+                    gum style --foreground 196 "[FAIL] Failed [FLATPAK]: $pkg"
                     ((fail_count++))
                 fi
                 ;;
@@ -1652,14 +1744,15 @@ run_gum_uninstaller() {
     # Show results
     if [[ $success_count -gt 0 ]]; then
         gum style --border rounded --border-foreground 82 --padding "1 2" \
-            "$(gum style --foreground 82 --bold "✅ Successfully uninstalled $success_count package(s)!")"
+            "$(gum style --foreground 82 --bold "[SUCCESS] Uninstalled $success_count package(s)")"
     fi
 
     if [[ $fail_count -gt 0 ]]; then
         gum style --border rounded --border-foreground 196 --padding "1 2" \
-            "$(gum style --foreground 196 --bold "❌ Failed to uninstall $fail_count package(s)")"
+            "$(gum style --foreground 196 --bold "[ERROR] Failed to uninstall $fail_count package(s)")"
     fi
 
+    echo ""
     gum style --foreground 147 "Full log saved: /tmp/fub-uninstall.log"
 }
 
