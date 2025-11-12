@@ -1427,60 +1427,90 @@ run_gum_uninstaller() {
     local formatted_system=$(mktemp)
     local current_time=$(date +%s)
 
-    # Scan APT packages
-    gum spin --spinner dot --title "Scanning APT packages..." -- bash -c "
+    # OPTIMIZED: Parallel package scanning for faster performance
+
+    # Start APT scan in background (already optimized - single query)
+    (
         dpkg-query -W -f='\${Package}|\${Installed-Size}|apt\n' 2>/dev/null | \
         grep -v '^|' | \
-        sort -t'|' -k2 -n -r > '$temp_apt'
-    "
-    local apt_count=$(wc -l < "$temp_apt" 2>/dev/null || echo "0")
+        sort -t'|' -k2 -n -r > "$temp_apt"
+    ) &
+    local apt_pid=$!
 
-    # Scan Snap packages (if installed)
-    local snap_count=0
+    # Start Snap scan in background (OPTIMIZED: single du call)
+    local snap_pid=""
     if command -v snap &> /dev/null; then
-        gum spin --spinner dot --title "Scanning Snap packages..." -- bash -c "
-            snap list 2>/dev/null | tail -n +2 | awk '{
-                name=\$1
-                # Get snap size in bytes, convert to KB
-                cmd=\"du -sk /snap/\" name \" 2>/dev/null | awk '{print \$1}'\"
-                cmd | getline size_kb
-                close(cmd)
-                if (size_kb == \"\") size_kb = \"0\"
-                print name \"|\" size_kb \"|snap\"
-            }' | sort -t'|' -k2 -n -r > '$temp_snap'
-        " 2>/dev/null || touch "$temp_snap"
-        snap_count=$(wc -l < "$temp_snap" 2>/dev/null || echo "0")
+        (
+            # Get list of installed snaps
+            snap list 2>/dev/null | tail -n +2 | awk '{print $1}' > "${temp_snap}.names"
+
+            # Single du call for ALL snaps - major performance improvement
+            du -sk /snap/* 2>/dev/null | awk '
+                BEGIN {
+                    # Load snap names into associative array
+                    while ((getline snap_name < "'${temp_snap}'.names") > 0) {
+                        snap_names[snap_name] = 1
+                    }
+                    close("'${temp_snap}'.names")
+                }
+                {
+                    # Extract snap name from path: /snap/<name>/...
+                    split($2, parts, "/")
+                    name = parts[3]
+
+                    # Only include actual installed snaps (not subdirectories)
+                    if (name in snap_names) {
+                        print name "|" $1 "|snap"
+                    }
+                }
+            ' | sort -t'|' -k2 -n -r > "$temp_snap"
+
+            rm -f "${temp_snap}.names"
+        ) &
+        snap_pid=$!
+    else
+        touch "$temp_snap"
     fi
 
-    # Scan Flatpak packages (if installed)
-    local flatpak_count=0
+    # Start Flatpak scan in background (OPTIMIZED: streamlined processing)
+    local flatpak_pid=""
     if command -v flatpak &> /dev/null; then
-        gum spin --spinner dot --title "Scanning Flatpak packages..." -- bash -c "
-            flatpak list --app 2>/dev/null | awk -F'\t' '{
-                name=\$2
-                app_id=\$1
-                # Get flatpak size
-                cmd=\"flatpak info --show-size \" app_id \" 2>/dev/null | grep -i 'installed size' | awk '{print \$3}'\"
-                cmd | getline size_str
-                close(cmd)
+        (
+            flatpak list --app 2>/dev/null | while IFS=$'\t' read -r app_id name rest; do
+                # Get size for this flatpak
+                size_str=$(flatpak info --show-size "$app_id" 2>/dev/null | \
+                          grep -i 'installed size' | awk '{print $3}')
+
                 # Convert size to KB (handle MB, GB, KB suffixes)
-                if (size_str ~ /GB/) {
-                    gsub(/GB/, \"\", size_str)
-                    size_kb = size_str * 1048576
-                } else if (size_str ~ /MB/) {
-                    gsub(/MB/, \"\", size_str)
-                    size_kb = size_str * 1024
-                } else if (size_str ~ /kB/) {
-                    gsub(/kB/, \"\", size_str)
-                    size_kb = size_str
-                } else {
-                    size_kb = 0
-                }
-                print app_id \"|\" int(size_kb) \"|flatpak\"
-            }' | sort -t'|' -k2 -n -r > '$temp_flatpak'
-        " 2>/dev/null || touch "$temp_flatpak"
-        flatpak_count=$(wc -l < "$temp_flatpak" 2>/dev/null || echo "0")
+                if [[ "$size_str" =~ ^([0-9.]+)GB$ ]]; then
+                    size_kb=$(awk "BEGIN {printf \"%d\", ${BASH_REMATCH[1]} * 1048576}")
+                elif [[ "$size_str" =~ ^([0-9.]+)MB$ ]]; then
+                    size_kb=$(awk "BEGIN {printf \"%d\", ${BASH_REMATCH[1]} * 1024}")
+                elif [[ "$size_str" =~ ^([0-9.]+)kB$ ]]; then
+                    size_kb=$(awk "BEGIN {printf \"%d\", ${BASH_REMATCH[1]}}")
+                else
+                    size_kb=0
+                fi
+
+                echo "$app_id|$size_kb|flatpak"
+            done | sort -t'|' -k2 -n -r > "$temp_flatpak"
+        ) &
+        flatpak_pid=$!
+    else
+        touch "$temp_flatpak"
     fi
+
+    # Wait for all scans to complete with a single spinner
+    gum spin --spinner dot --title "Scanning all packages in parallel..." -- bash -c "
+        wait $apt_pid 2>/dev/null || true
+        [[ -n '$snap_pid' ]] && wait $snap_pid 2>/dev/null || true
+        [[ -n '$flatpak_pid' ]] && wait $flatpak_pid 2>/dev/null || true
+    "
+
+    # Count results from each scan
+    local apt_count=$(wc -l < "$temp_apt" 2>/dev/null || echo "0")
+    local snap_count=$(wc -l < "$temp_snap" 2>/dev/null || echo "0")
+    local flatpak_count=$(wc -l < "$temp_flatpak" 2>/dev/null || echo "0")
 
     local total_packages=$((apt_count + snap_count + flatpak_count))
     echo ""
