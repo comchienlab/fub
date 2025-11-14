@@ -43,7 +43,7 @@ USAGE:
     $SCRIPT_NAME clean --dry-run    Preview cleanup without execution
     $SCRIPT_NAME clean --force      Clean without confirmation prompts
     $SCRIPT_NAME analyze            Analyze disk usage (requires gum)
-    $SCRIPT_NAME uninstall          Uninstall applications (requires gum)
+    $SCRIPT_NAME uninstall          Uninstall APT/Snap/Flatpak apps (requires gum & fzf)
     $SCRIPT_NAME debloat            Remove bloatware and unnecessary software (requires gum)
     $SCRIPT_NAME swap               Manage swap files for memory (requires gum)
     $SCRIPT_NAME fonts              Install Nerd Fonts for terminal (requires gum)
@@ -56,14 +56,14 @@ EXAMPLES:
     $SCRIPT_NAME clean --dry-run    # See what would be cleaned
     $SCRIPT_NAME clean              # Execute cleanup safely
     $SCRIPT_NAME analyze            # Browse largest directories
-    $SCRIPT_NAME uninstall          # Search and remove packages
+    $SCRIPT_NAME uninstall          # Uninstall APT/Snap/Flatpak packages with fzf
     $SCRIPT_NAME debloat            # Remove snap, bloatware, orphans
     $SCRIPT_NAME swap               # Create/manage swap files
     $SCRIPT_NAME fonts              # Install Nerd Fonts with icons
 
 NEW FEATURES (with gum):
     📁 Disk Analyzer - Interactively browse and clean large directories
-    🗑️  App Uninstaller - Search and thoroughly remove applications
+    🗑️  App Uninstaller - Unified APT/Snap/Flatpak removal with fzf search
     💣 System Debloat - Remove snap packages, GNOME bloatware, orphaned packages
     💾 Swap Manager - Create and manage swap files (2-32GB options)
     🎨 Nerd Fonts - Install developer fonts with icons and glyphs
@@ -799,135 +799,414 @@ show_help_screen() {
 show_gum_dashboard() {
     clear
 
-    # System info banner
-    local ubuntu_ver=$(detect_ubuntu_version)
-    local disk_info=$(get_disk_info)
+    # ASCII Art Header inspired by Mole
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
 
     gum style \
-        --border double \
-        --border-foreground 212 \
-        --padding "1 2" \
-        --width 70 \
+        --foreground 212 \
+        --bold \
         --align center \
-        "$(gum style --foreground 212 --bold 'FUB DASHBOARD')" \
-        "$(gum style --foreground 147 'Dig deep like a mole to clean your Ubuntu')" \
-        "" \
-        "$(gum style --foreground 86 "Ubuntu $ubuntu_ver | $disk_info")"
+        --width 80 \
+        "║                                                                           ║"
+
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                    🐹  FUB - Filesystem Ubuntu Buddy                     ║"
+
+    gum style \
+        --foreground 147 \
+        --align center \
+        --width 80 \
+        "║                   Dig deep like a mole to clean Ubuntu                   ║"
+
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                                                                           ║"
+
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
 
     echo ""
 
-    # Interactive menu
+    # System Information Panel
+    local ubuntu_ver=$(detect_ubuntu_version)
+    local kernel_ver=$(uname -r)
+    local disk_info=$(get_disk_info)
+    local hostname=$(hostname)
+    local uptime_info=$(uptime -p 2>/dev/null | sed 's/up //' || echo "N/A")
+
+    gum style \
+        --border rounded \
+        --border-foreground 86 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 86 --bold '  System Information')" \
+        "" \
+        "$(gum style --foreground 147 "  💻 Host      : $hostname")" \
+        "$(gum style --foreground 147 "  🐧 OS        : Ubuntu $ubuntu_ver")" \
+        "$(gum style --foreground 147 "  ⚙️  Kernel    : $kernel_ver")" \
+        "$(gum style --foreground 147 "  💾 Disk      : $disk_info")" \
+        "$(gum style --foreground 147 "  ⏱️  Uptime    : $uptime_info")"
+
+    echo ""
+
+    # Main Menu Header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╭─────────────────────────  MAIN MENU  ─────────────────────────╮"
+
+    echo ""
+
+    # Interactive menu with enhanced styling
     local choice
     choice=$(gum choose \
-        --header "$(gum style --foreground 212 --bold 'Main Menu')" \
-        --cursor "→ " \
+        --cursor "▶ " \
         --cursor-prefix "  " \
         --selected-prefix "  " \
         --height 15 \
-        "🧹  Clean System (with preview)" \
-        "🚀  Quick Clean (skip preview)" \
-        "📊  Dry-Run Only (analyze)" \
-        "📁  Disk Analyzer" \
-        "🗑️  Uninstall Apps" \
-        "💣  System Debloat" \
-        "💾  Swap Manager" \
-        "🎨  Nerd Fonts" \
-        "⚙️  Configure Profiles" \
-        "ℹ️  System Status" \
-        "❓  Help & Documentation" \
-        "🚪  Exit")
+        --header "" \
+        "  🧹  Clean System          Deep cleanup with preview before execution" \
+        "  🚀  Quick Clean           Fast cleanup without preview (dry-run first)" \
+        "  📊  Analyze Only          Calculate cleanup size without changes" \
+        "" \
+        "  📁  Disk Analyzer         Browse and analyze disk usage by directory" \
+        "  🗑️  Uninstall Apps        Remove APT/Snap/Flatpak packages with fzf" \
+        "  💣  System Debloat        Remove bloatware and unnecessary packages" \
+        "" \
+        "  💾  Swap Manager          Create or manage swap files (2-32GB)" \
+        "  🎨  Nerd Fonts            Install developer fonts with icons" \
+        "  ⚙️  Configure             Setup cleanup profiles and preferences" \
+        "" \
+        "  ℹ️  System Status         View detailed system information" \
+        "  ❓  Help                  Show documentation and usage guide" \
+        "  🚪  Exit                  Quit FUB")
+
+    echo ""
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╰───────────────────────────────────────────────────────────────╯"
+    echo ""
+
+    # Handle empty selection (separator lines)
+    if [[ -z "$choice" ]]; then
+        show_gum_dashboard
+        return
+    fi
 
     case "$choice" in
-        "🧹"*) run_gum_cleanup_with_preview ;;
-        "🚀"*) run_gum_quick_clean ;;
-        "📊"*) run_gum_dry_run_only ;;
-        "📁"*) run_gum_disk_analyzer ;;
-        "🗑️"*) run_gum_uninstaller ;;
-        "💣"*) run_gum_debloat ;;
-        "💾"*) run_gum_swap_manager ;;
-        "🎨"*) run_gum_font_installer ;;
-        "⚙️"*) run_gum_configure_profiles ;;
-        "ℹ️"*) show_gum_system_status ;;
-        "❓"*) show_gum_help_screen ;;
-        "🚪"*)
-            gum style --foreground 212 "Goodbye! 👋"
+        *"Clean System"*) run_gum_cleanup_with_preview ;;
+        *"Quick Clean"*) run_gum_quick_clean ;;
+        *"Analyze Only"*) run_gum_dry_run_only ;;
+        *"Disk Analyzer"*) run_gum_disk_analyzer ;;
+        *"Uninstall Apps"*) run_gum_uninstaller ;;
+        *"System Debloat"*) run_gum_debloat ;;
+        *"Swap Manager"*) run_gum_swap_manager ;;
+        *"Nerd Fonts"*) run_gum_font_installer ;;
+        *"Configure"*) run_gum_configure_profiles ;;
+        *"System Status"*) show_gum_system_status ;;
+        *"Help"*) show_gum_help_screen ;;
+        *"Exit"*)
+            clear
+            gum style \
+                --foreground 212 \
+                --bold \
+                --align center \
+                "╔═══════════════════════════════════════════════╗"
+            gum style \
+                --foreground 147 \
+                --align center \
+                "║                                               ║"
+            gum style \
+                --foreground 86 \
+                --align center \
+                "║      Thank you for using FUB! 🐹 👋          ║"
+            gum style \
+                --foreground 147 \
+                --align center \
+                "║     Your Ubuntu is now cleaner and faster    ║"
+            gum style \
+                --foreground 147 \
+                --align center \
+                "║                                               ║"
+            gum style \
+                --foreground 212 \
+                --bold \
+                --align center \
+                "╚═══════════════════════════════════════════════╝"
+            echo ""
             exit 0
+            ;;
+        *)
+            show_gum_dashboard
+            return
             ;;
     esac
 
-    # Return to menu
+    # Return to menu with styled prompt
     echo ""
-    gum style --foreground 86 "Press Enter to return to main menu..."
+    echo ""
+    gum style \
+        --foreground 86 \
+        --align center \
+        "─────────────────────────────────────────────────────"
+    gum style \
+        --foreground 147 \
+        --align center \
+        "Press Enter to return to main menu..."
     read -r
     show_gum_dashboard
 }
 
 show_gum_system_status() {
     clear
-    gum style --border double --border-foreground 212 --padding "1 2" --align center \
-        "$(gum style --bold --foreground 212 'SYSTEM STATUS')"
+
+    # Header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                          ℹ️  SYSTEM STATUS                                ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
 
     echo ""
 
-    gum style --foreground 147 --bold "System Information:"
-    echo "  Ubuntu Version: $(detect_ubuntu_version)"
-    echo "  Kernel: $(uname -r)"
-    echo "  Architecture: $(uname -m)"
-    echo "  Uptime: $(uptime -p 2>/dev/null || echo "N/A")"
+    # System Information
+    local ubuntu_ver=$(detect_ubuntu_version)
+    local kernel_ver=$(uname -r)
+    local arch=$(uname -m)
+    local uptime_info=$(uptime -p 2>/dev/null | sed 's/up //' || echo "N/A")
+    local hostname=$(hostname)
+    local user=$(whoami)
+
+    gum style \
+        --border rounded \
+        --border-foreground 86 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 86 --bold '▶ System Information')" \
+        "" \
+        "$(gum style --foreground 147 "  💻 Hostname    : $hostname")" \
+        "$(gum style --foreground 147 "  👤 User        : $user")" \
+        "$(gum style --foreground 147 "  🐧 OS          : Ubuntu $ubuntu_ver")" \
+        "$(gum style --foreground 147 "  ⚙️  Kernel      : $kernel_ver")" \
+        "$(gum style --foreground 147 "  🏗️  Architecture: $arch")" \
+        "$(gum style --foreground 147 "  ⏱️  Uptime      : $uptime_info")"
+
     echo ""
 
-    gum style --foreground 147 --bold "Disk Usage:"
-    df -h | grep -E '^/dev/' | while read -r line; do
-        echo "  $line"
+    # Disk Usage
+    gum style \
+        --border rounded \
+        --border-foreground 212 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 212 --bold '▶ Disk Usage')" \
+        ""
+
+    df -h | grep -E '^/dev/' | while IFS= read -r line; do
+        local dev=$(echo "$line" | awk '{print $1}')
+        local size=$(echo "$line" | awk '{print $2}')
+        local used=$(echo "$line" | awk '{print $3}')
+        local avail=$(echo "$line" | awk '{print $4}')
+        local percent=$(echo "$line" | awk '{print $5}')
+        local mount=$(echo "$line" | awk '{print $6}')
+
+        echo "  📊 $mount"
+        echo "     Size: $size | Used: $used | Available: $avail | Usage: $percent"
+        echo ""
     done
+
+    # Memory Usage
+    gum style \
+        --border rounded \
+        --border-foreground 117 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 117 --bold '▶ Memory Usage')" \
+        ""
+
+    local mem_total=$(free -h | awk '/^Mem:/ {print $2}')
+    local mem_used=$(free -h | awk '/^Mem:/ {print $3}')
+    local mem_free=$(free -h | awk '/^Mem:/ {print $4}')
+    local mem_percent=$(free | awk '/^Mem:/ {printf "%.1f%%", ($3/$2)*100}')
+
+    local swap_total=$(free -h | awk '/^Swap:/ {print $2}')
+    local swap_used=$(free -h | awk '/^Swap:/ {print $3}')
+    local swap_free=$(free -h | awk '/^Swap:/ {print $4}')
+
+    echo "  💾 RAM"
+    echo "     Total: $mem_total | Used: $mem_used | Free: $mem_free | Usage: $mem_percent"
+    echo ""
+    echo "  💿 Swap"
+    echo "     Total: $swap_total | Used: $swap_used | Free: $swap_free"
+
     echo ""
 
-    gum style --foreground 147 --bold "Memory Usage:"
-    free -h | grep -E '^Mem:|^Swap:' | while read -r line; do
-        echo "  $line"
-    done
-    echo ""
+    # FUB Status
+    gum style \
+        --border rounded \
+        --border-foreground 226 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 226 --bold '▶ FUB Status')" \
+        "" \
+        "$(gum style --foreground 147 "  📦 Version     : $VERSION")" \
+        "$(gum style --foreground 147 "  🎨 Gum         : $(if command -v gum >/dev/null 2>&1; then echo "✅ Installed ($(gum --version 2>/dev/null | head -1 || echo 'unknown'))"; else echo "❌ Not installed"; fi)")" \
+        "$(gum style --foreground 147 "  🔍 Fzf         : $(if command -v fzf >/dev/null 2>&1; then echo "✅ Installed ($(fzf --version 2>/dev/null | awk '{print $1}' || echo 'unknown'))"; else echo "❌ Not installed"; fi)")" \
+        "$(gum style --foreground 147 "  🛠️  Install Path: $INSTALL_DIR/fub $(if [[ -x "$INSTALL_DIR/fub" ]]; then echo "✅"; else echo "❌"; fi)")"
 
-    gum style --foreground 147 --bold "FUB Status:"
-    echo "  Version: $VERSION"
-    echo "  Gum: $(if command -v gum >/dev/null 2>&1; then echo "✅ Installed"; else echo "❌ Not installed"; fi)"
-    echo "  Installation: $(if [[ -x "$INSTALL_DIR/fub" ]]; then echo "✅ Installed"; else echo "❌ Not found"; fi)"
     echo ""
 }
 
 show_gum_help_screen() {
     clear
-    gum style --border double --border-foreground 212 --padding "1 2" --align center \
-        "$(gum style --bold --foreground 212 'HELP & DOCUMENTATION')"
+
+    # Header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                      ❓  HELP & DOCUMENTATION                             ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
 
     echo ""
 
-    gum style --foreground 147 --bold "What is FUB?"
-    echo "FUB (Filesystem Ubuntu Buddy) is a terminal-based cleanup utility"
-    echo "for Ubuntu, inspired by Mole for macOS. It helps you reclaim disk"
-    echo "space by cleaning system caches, old kernels, and temporary files."
+    # What is FUB?
+    gum style \
+        --border rounded \
+        --border-foreground 86 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 86 --bold '▶ What is FUB?')" \
+        "" \
+        "$(gum style --foreground 147 "  FUB (Filesystem Ubuntu Buddy) is a powerful terminal-based cleanup")" \
+        "$(gum style --foreground 147 "  utility for Ubuntu, inspired by Mole for macOS. It helps you reclaim")" \
+        "$(gum style --foreground 147 "  disk space by deep cleaning system caches, old kernels, logs, and")" \
+        "$(gum style --foreground 147 "  temporary files with a beautiful interactive interface.")"
+
     echo ""
 
-    gum style --foreground 147 --bold "Cleanup Categories:"
-    echo "  🧹 APT Cache - Old package files"
-    echo "  🗂️  Old Kernels - Previous kernel versions (keeps current + 1)"
-    echo "  📋 systemd Journal - System logs"
-    echo "  🌐 Browser Caches - Firefox, Chrome, Chromium"
-    echo "  💾 User Caches - Application caches in ~/.cache/"
-    echo "  🗑️  Temp Files - Old temporary files"
+    # Cleanup Categories
+    gum style \
+        --border rounded \
+        --border-foreground 212 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 212 --bold '▶ Cleanup Categories')" \
+        "" \
+        "$(gum style --foreground 147 "  🧹 APT Cache       : Old package files from /var/cache/apt/")" \
+        "$(gum style --foreground 147 "  🗂️  Old Kernels     : Previous kernel versions (keeps current + 1)")" \
+        "$(gum style --foreground 147 "  📋 systemd Journal : System logs (vacuum to configurable size)")" \
+        "$(gum style --foreground 147 "  🌐 Browser Caches  : Firefox, Chrome, Chromium, Edge cache files")" \
+        "$(gum style --foreground 147 "  💾 User Caches     : Application caches in ~/.cache/ directory")" \
+        "$(gum style --foreground 147 "  🗑️  Temp Files      : Old temporary files from /tmp and /var/tmp")"
+
     echo ""
 
-    gum style --foreground 147 --bold "New Features (Gum-Enhanced):"
-    echo "  📁 Disk Analyzer - Interactive directory browser"
-    echo "  🗑️  App Uninstaller - Search and remove packages"
-    echo "  ⚙️  Profiles - Desktop, Server, or Minimal cleanup modes"
+    # New Features
+    gum style \
+        --border rounded \
+        --border-foreground 117 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 117 --bold '▶ Enhanced Features (with gum)')" \
+        "" \
+        "$(gum style --foreground 147 "  📁 Disk Analyzer   : Interactively browse and analyze disk usage")" \
+        "$(gum style --foreground 147 "  🗑️  App Uninstaller : Search and remove APT/Snap/Flatpak packages")" \
+        "$(gum style --foreground 147 "  💣 System Debloat  : Remove bloatware and unnecessary software")" \
+        "$(gum style --foreground 147 "  💾 Swap Manager    : Create and manage swap files (2-32GB)")" \
+        "$(gum style --foreground 147 "  🎨 Nerd Fonts      : Install developer fonts with icons")" \
+        "$(gum style --foreground 147 "  ⚙️  Profiles        : Desktop, Server, or Minimal cleanup modes")"
+
     echo ""
 
-    gum style --foreground 147 --bold "Safety Features:"
-    echo "  ✅ Never removes current kernel"
-    echo "  ✅ Dry-run mode shows exactly what will be cleaned"
-    echo "  ✅ Explicit confirmations for all operations"
-    echo "  ✅ Skips cleanup if APT is locked"
+    # Safety Features
+    gum style \
+        --border rounded \
+        --border-foreground 226 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 226 --bold '▶ Safety Features')" \
+        "" \
+        "$(gum style --foreground 82 "  ✅ Never removes current kernel")" \
+        "$(gum style --foreground 82 "  ✅ Dry-run mode shows exactly what will be cleaned")" \
+        "$(gum style --foreground 82 "  ✅ Explicit confirmations for all operations")" \
+        "$(gum style --foreground 82 "  ✅ Skips cleanup if APT is locked")" \
+        "$(gum style --foreground 82 "  ✅ Checks if browsers are running before cleaning caches")" \
+        "$(gum style --foreground 82 "  ✅ Comprehensive logging of all operations")"
+
+    echo ""
+
+    # Quick Commands
+    gum style \
+        --border rounded \
+        --border-foreground 147 \
+        --padding "0 2" \
+        --width 78 \
+        --margin "0 1" \
+        "$(gum style --foreground 147 --bold '▶ Quick Commands')" \
+        "" \
+        "$(gum style --foreground 86 "  fub                : Launch interactive dashboard")" \
+        "$(gum style --foreground 86 "  fub clean          : Deep clean with preview")" \
+        "$(gum style --foreground 86 "  fub clean --dry-run: Preview cleanup without changes")" \
+        "$(gum style --foreground 86 "  fub uninstall      : Uninstall apps with fzf search")" \
+        "$(gum style --foreground 86 "  fub analyze        : Browse disk usage")" \
+        "$(gum style --foreground 86 "  fub --help         : Show detailed help")"
+
     echo ""
 }
 
@@ -937,7 +1216,29 @@ show_gum_help_screen() {
 
 run_gum_cleanup_with_preview() {
     clear
-    gum style --foreground 212 --bold "🔍 Analyzing system for cleanup opportunities..."
+
+    # Clean header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                        SYSTEM CLEANUP WITH PREVIEW                       ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
+
+    echo ""
+    gum style --foreground 147 "Analyzing system for cleanup opportunities..."
     echo ""
 
     # Run dry-run first
@@ -946,7 +1247,7 @@ run_gum_cleanup_with_preview() {
     echo ""
     if gum confirm "Proceed with cleanup?"; then
         echo ""
-        gum spin --spinner dot --title "Cleaning system..." -- sleep 1
+        gum spin --spinner dot --title "Preparing cleanup..." -- sleep 1
         echo ""
         run_gum_cleanup_execute
     else
@@ -956,7 +1257,27 @@ run_gum_cleanup_with_preview() {
 
 run_gum_quick_clean() {
     clear
-    gum style --foreground 212 --bold "🚀 Quick Clean Mode"
+
+    # Clean header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                           QUICK CLEAN MODE                               ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
+
     echo ""
     gum style --foreground 244 "This will clean all categories without preview."
     echo ""
@@ -971,7 +1292,27 @@ run_gum_quick_clean() {
 
 run_gum_dry_run_only() {
     clear
-    gum style --foreground 212 --bold "📊 Dry-Run Analysis"
+
+    # Clean header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                          DRY-RUN ANALYSIS                                ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
+
     echo ""
     run_all_cleanup true
 }
@@ -985,7 +1326,8 @@ run_gum_cleanup_execute() {
     gum spin --spinner dot --title "Cleaning temp files..." -- bash -c "cleanup_temp_files false" 2>/dev/null || true
 
     echo ""
-    gum style --foreground 82 --bold "✅ Cleanup completed!"
+    gum style --border rounded --border-foreground 82 --padding "1 2" \
+        "$(gum style --foreground 82 --bold '[SUCCESS] Cleanup completed successfully')"
 }
 
 # =============================================================================
@@ -994,8 +1336,26 @@ run_gum_cleanup_execute() {
 
 run_gum_disk_analyzer() {
     clear
-    gum style --border double --border-foreground 212 --padding "1 2" --align center \
-        "$(gum style --bold --foreground 212 '📁 DISK ANALYZER')"
+
+    # Clean header
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                            DISK ANALYZER                                 ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
 
     echo ""
     gum style --foreground 147 "Analyzing disk usage... This may take a moment."
@@ -1035,115 +1395,228 @@ run_gum_disk_analyzer() {
 
 run_gum_uninstaller() {
     clear
-    gum style --border double --border-foreground 212 --padding "1 2" --align center \
-        "$(gum style --bold --foreground 212 '🗑️  APP UNINSTALLER')"
+
+    # Clean header without complex emojis
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╔═══════════════════════════════════════════════════════════════════════════╗"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "║                      APP UNINSTALLER - APT + Snap + Flatpak             ║"
+    gum style \
+        --foreground 212 \
+        --bold \
+        --align center \
+        --width 80 \
+        "╚═══════════════════════════════════════════════════════════════════════════╝"
 
     echo ""
-    gum style --foreground 147 "Loading installed packages with sizes..."
-    echo ""
 
-    # PERFORMANCE OPTIMIZATION: Batch query ALL metadata in single dpkg-query call
-    local temp_metadata=$(mktemp)
-
-    gum spin --spinner dot --title "Scanning packages..." -- bash -c "
-        dpkg-query -W -f='\${Package}|\${Installed-Size}|\${Priority}|\${Section}|\${Essential}\n' | \
-        grep -v '^|' > '$temp_metadata'
-    "
-
-    local total_packages=$(wc -l < "$temp_metadata")
-    gum style --foreground 82 "Found $total_packages installed packages"
-    echo ""
-
-    # PERFORMANCE OPTIMIZATION: Cache all metadata to avoid recalculation
-    declare -A pkg_cache
+    # Temp files for different package types
+    local temp_apt=$(mktemp)
+    local temp_snap=$(mktemp)
+    local temp_flatpak=$(mktemp)
     local formatted_list=$(mktemp)
     local formatted_user=$(mktemp)
     local formatted_system=$(mktemp)
     local current_time=$(date +%s)
 
-    # Process all packages in single pass
-    while IFS='|' read -r pkg size_kb priority section essential; do
-        if [[ -n "$pkg" && -n "$size_kb" ]]; then
-            # Convert KB to human readable (pure bash - no awk spawning)
-            local size_display
-            if (( size_kb > 1048576 )); then
-                # GB - use bc for floating point
-                size_display=$(printf "%.1fG" "$(echo "scale=1; $size_kb/1048576" | bc)")
-            elif (( size_kb > 1024 )); then
-                # MB
-                size_display=$(printf "%.0fM" "$(( size_kb / 1024 ))")
-            else
-                # KB
-                size_display="${size_kb}K"
-            fi
+    # OPTIMIZED: Parallel package scanning for faster performance
 
-            # Determine package age (Old vs Recent) with color coding
-            local age_indicator="Recent"
-            local age_color="82"  # Green
-            local age_emoji="🟢"
-            local list_file="/var/lib/dpkg/info/${pkg}.list"
+    # Start APT scan in background (already optimized - single query)
+    (
+        dpkg-query -W -f='\${Package}|\${Installed-Size}|apt\n' 2>/dev/null | \
+        grep -v '^|' | \
+        sort -t'|' -k2 -n -r > "$temp_apt"
+    ) &
+    local apt_pid=$!
 
-            if [[ -f "$list_file" ]]; then
-                local file_time=$(stat -c %Y "$list_file" 2>/dev/null || echo "$current_time")
-                local days_old=$(( (current_time - file_time) / 86400 ))
+    # Start Snap scan in background (OPTIMIZED: single du call)
+    local snap_pid=""
+    if command -v snap &> /dev/null; then
+        (
+            # Get list of installed snaps
+            snap list 2>/dev/null | tail -n +2 | awk '{print $1}' > "${temp_snap}.names"
 
-                if [[ $days_old -gt 180 ]]; then
-                    age_indicator="Old"
-                    age_color="196"  # Red
-                    age_emoji="🔴"
-                elif [[ $days_old -gt 90 ]]; then
-                    age_indicator="Aged"
-                    age_color="226"  # Yellow
-                    age_emoji="🟡"
+            # Single du call for ALL snaps - major performance improvement
+            du -sk /snap/* 2>/dev/null | awk '
+                BEGIN {
+                    # Load snap names into associative array
+                    while ((getline snap_name < "'${temp_snap}'.names") > 0) {
+                        snap_names[snap_name] = 1
+                    }
+                    close("'${temp_snap}'.names")
+                }
+                {
+                    # Extract snap name from path: /snap/<name>/...
+                    split($2, parts, "/")
+                    name = parts[3]
+
+                    # Only include actual installed snaps (not subdirectories)
+                    if (name in snap_names) {
+                        print name "|" $1 "|snap"
+                    }
+                }
+            ' | sort -t'|' -k2 -n -r > "$temp_snap"
+
+            rm -f "${temp_snap}.names"
+        ) &
+        snap_pid=$!
+    else
+        touch "$temp_snap"
+    fi
+
+    # Start Flatpak scan in background (OPTIMIZED: streamlined processing)
+    local flatpak_pid=""
+    if command -v flatpak &> /dev/null; then
+        (
+            flatpak list --app 2>/dev/null | while IFS=$'\t' read -r app_id name rest; do
+                # Get size for this flatpak
+                size_str=$(flatpak info --show-size "$app_id" 2>/dev/null | \
+                          grep -i 'installed size' | awk '{print $3}')
+
+                # Convert size to KB (handle MB, GB, KB suffixes)
+                if [[ "$size_str" =~ ^([0-9.]+)GB$ ]]; then
+                    size_kb=$(awk "BEGIN {printf \"%d\", ${BASH_REMATCH[1]} * 1048576}")
+                elif [[ "$size_str" =~ ^([0-9.]+)MB$ ]]; then
+                    size_kb=$(awk "BEGIN {printf \"%d\", ${BASH_REMATCH[1]} * 1024}")
+                elif [[ "$size_str" =~ ^([0-9.]+)kB$ ]]; then
+                    size_kb=$(awk "BEGIN {printf \"%d\", ${BASH_REMATCH[1]}}")
+                else
+                    size_kb=0
+                fi
+
+                echo "$app_id|$size_kb|flatpak"
+            done | sort -t'|' -k2 -n -r > "$temp_flatpak"
+        ) &
+        flatpak_pid=$!
+    else
+        touch "$temp_flatpak"
+    fi
+
+    # Wait for all scans to complete with a single spinner
+    gum spin --spinner dot --title "Scanning all packages in parallel..." -- bash -c "
+        wait $apt_pid 2>/dev/null || true
+        [[ -n '$snap_pid' ]] && wait $snap_pid 2>/dev/null || true
+        [[ -n '$flatpak_pid' ]] && wait $flatpak_pid 2>/dev/null || true
+    "
+
+    # Count results from each scan
+    local apt_count=$(wc -l < "$temp_apt" 2>/dev/null || echo "0")
+    local snap_count=$(wc -l < "$temp_snap" 2>/dev/null || echo "0")
+    local flatpak_count=$(wc -l < "$temp_flatpak" 2>/dev/null || echo "0")
+
+    local total_packages=$((apt_count + snap_count + flatpak_count))
+    echo ""
+    gum style --foreground 82 "Found: $apt_count APT + $snap_count Snap + $flatpak_count Flatpak = $total_packages total packages"
+    echo ""
+
+    # Format packages with human-readable sizes, age indicators, and categories
+    # Process all package types: APT, Snap, Flatpak
+    for pkg_file in "$temp_apt" "$temp_snap" "$temp_flatpak"; do
+        [[ ! -s "$pkg_file" ]] && continue
+
+        while IFS='|' read -r pkg size_kb pkg_type; do
+            if [[ -n "$pkg" && -n "$size_kb" && -n "$pkg_type" ]]; then
+                # Convert KB to human readable
+                if [[ $size_kb -gt 1048576 ]]; then
+                    size_display=$(awk "BEGIN {printf \"%.1fG\", $size_kb/1048576}")
+                elif [[ $size_kb -gt 1024 ]]; then
+                    size_display=$(awk "BEGIN {printf \"%.0fM\", $size_kb/1024}")
+                else
+                    size_display="${size_kb}K"
+                fi
+
+                # Package type indicator
+                local type_color="147"
+                case "$pkg_type" in
+                    snap)
+                        type_color="214"
+                        ;;
+                    flatpak)
+                        type_color="117"
+                        ;;
+                esac
+
+                # Determine package age (for APT only, others default to recent)
+                local age_indicator="new"
+                local age_color="82"  # Green
+
+                if [[ "$pkg_type" == "apt" ]]; then
+                    local list_file="/var/lib/dpkg/info/${pkg}.list"
+                    if [[ -f "$list_file" ]]; then
+                        local file_time=$(stat -c %Y "$list_file" 2>/dev/null || echo "$current_time")
+                        local days_old=$(( (current_time - file_time) / 86400 ))
+
+                        if [[ $days_old -gt 180 ]]; then
+                            age_indicator="old"
+                            age_color="196"  # Red
+                        elif [[ $days_old -gt 90 ]]; then
+                            age_indicator="mid"
+                            age_color="226"  # Yellow
+                        fi
+                    fi
+                fi
+
+                # Determine category: USER or SYSTEM (APT only, others are USER)
+                local category="USER"
+                local is_system=false
+
+                if [[ "$pkg_type" == "apt" ]]; then
+                    local priority=$(dpkg-query -W -f='${Priority}' "$pkg" 2>/dev/null || echo "optional")
+                    local section=$(dpkg-query -W -f='${Section}' "$pkg" 2>/dev/null || echo "")
+                    local essential=$(dpkg-query -W -f='${Essential}' "$pkg" 2>/dev/null || echo "no")
+
+                    if [[ "$essential" == "yes" ]] || \
+                       [[ "$priority" == "required" ]] || \
+                       [[ "$priority" == "important" ]] || \
+                       [[ "$section" =~ ^(admin|base|libs)$ ]] || \
+                       [[ "$pkg" =~ ^(apt|dpkg|systemd|libc|bash|coreutils|init|ubuntu-minimal) ]]; then
+                        category="SYSTEM"
+                        is_system=true
+                    fi
+                fi
+
+                # Format: [TYPE] package_name [CATEGORY] (size) | age
+                local type_label=""
+                case "$pkg_type" in
+                    apt) type_label="APT" ;;
+                    snap) type_label="SNAP" ;;
+                    flatpak) type_label="FLAT" ;;
+                esac
+
+                local line=$(printf "[%-4s] %-32s [%-6s] %7s  %-3s|%s" \
+                    "$type_label" "$pkg" "$category" "$size_display" "$age_indicator" "$pkg_type")
+
+                # Separate USER and SYSTEM apps for sorting
+                if [[ "$is_system" == false ]]; then
+                    echo "$line|$age_color" >> "$formatted_user"
+                else
+                    echo "$line|$age_color" >> "$formatted_system"
                 fi
             fi
-
-            # Determine package category: USER or SYSTEM (no extra dpkg-query calls!)
-            local category="USER"
-            local is_system=false
-
-            # System package detection (using cached metadata)
-            if [[ "$essential" == "yes" ]] || \
-               [[ "$priority" == "required" ]] || \
-               [[ "$priority" == "important" ]] || \
-               [[ "$section" =~ ^(admin|base|libs)$ ]] || \
-               [[ "$pkg" =~ ^(apt|dpkg|systemd|libc|bash|coreutils|init|ubuntu-minimal) ]]; then
-                category="SYSTEM"
-                is_system=true
-            fi
-
-            # Format: package_name [CATEGORY] (size) | age emoji
-            local line=$(printf "%-35s [%-6s] (%6s) | %-6s %s" "$pkg" "$category" "$size_display" "$age_indicator" "$age_emoji")
-
-            # PERFORMANCE OPTIMIZATION: Cache metadata for confirmation screen (no recalculation needed)
-            pkg_cache["$pkg"]="$size_kb|$age_color|$category|$size_display|$age_indicator|$age_emoji"
-
-            # Separate USER and SYSTEM apps for sorting
-            if [[ "$is_system" == false ]]; then
-                echo "$line|$age_color|$size_kb" >> "$formatted_user"
-            else
-                echo "$line|$age_color|$size_kb" >> "$formatted_system"
-            fi
-        fi
-    done < "$temp_metadata"
-
-    # Sort USER apps by size (largest first), then SYSTEM apps
-    sort -t'|' -k3 -n -r "$formatted_user" | cut -d'|' -f1,2 > "${formatted_user}.sorted"
-    sort -t'|' -k3 -n -r "$formatted_system" | cut -d'|' -f1,2 > "${formatted_system}.sorted"
+        done < "$pkg_file"
+    done
 
     # Combine: USER apps first, then SYSTEM apps
-    cat "${formatted_user}.sorted" "${formatted_system}.sorted" > "$formatted_list"
-    rm -f "$temp_metadata" "$formatted_user" "$formatted_system" "${formatted_user}.sorted" "${formatted_system}.sorted"
+    cat "$formatted_user" "$formatted_system" > "$formatted_list"
+    rm -f "$formatted_user" "$formatted_system" "$temp_apt" "$temp_snap" "$temp_flatpak"
 
     # Use fzf for fast search and multi-select
-    gum style --foreground 147 "🚀 Optimized with fzf - Type to search, Tab to select, Enter to confirm"
-    gum style --foreground 147 "💡 Quick filters: Alt-O (Old) | Alt-A (Aged) | Alt-U (USER) | Alt-S (SYSTEM) | Alt-G (>1GB) | Alt-R (Reset)"
+    gum style --foreground 147 ">> Optimized with fzf - Type to search, Tab to select, Enter to confirm"
+    gum style --foreground 147 ">> Showing USER apps first, then SYSTEM apps"
     echo ""
 
     # Apply ANSI colors to lines for fzf display
     local colored_list=$(mktemp)
-    while IFS='|' read -r line color_code; do
-        echo -e "\033[38;5;${color_code}m${line}\033[0m"
+    while IFS='|' read -r line pkg_type color_code; do
+        echo -e "\033[38;5;${color_code}m${line}\033[0m|${pkg_type}"
     done < "$formatted_list" > "$colored_list"
 
     # Use fzf for combined search + multi-select (much faster than gum)
@@ -1151,22 +1624,17 @@ run_gum_uninstaller() {
     selected=$(cat "$colored_list" | fzf \
         --multi \
         --ansi \
-        --prompt="🔍 Search & Select > " \
+        --prompt="Search > " \
         --header="Tab/Shift-Tab: select | Ctrl-A: all | Ctrl-D: deselect | Enter: confirm
-─────────────────────────────────────────────────────────────────
-🔴 Old (>6mo) | 🟡 Aged (3-6mo) | 🟢 Recent (<3mo)
-📦 USER (safe to remove) | 🔧 SYSTEM (use caution!)
-💡 Quick Filters: Alt-O (Old) | Alt-A (Aged) | Alt-U (USER) | Alt-S (SYSTEM) | Alt-G (>1GB) | Alt-R (Reset)" \
+────────────────────────────────────────────────────────────────────────────
+[APT]=APT pkg | [SNAP]=Snap pkg | [FLAT]=Flatpak pkg
+old (>6mo) | mid (3-6mo) | new (<3mo)
+[USER]=safe to remove | [SYSTEM]=caution required
+Fuzzy search examples: 'snap firefox' or 'flat vlc' or 'apt old'" \
         --bind 'ctrl-a:select-all' \
         --bind 'ctrl-d:deselect-all' \
         --bind 'ctrl-/:toggle-preview' \
-        --bind 'alt-o:reload(grep "Old" "$colored_list")' \
-        --bind 'alt-a:reload(grep "Aged" "$colored_list")' \
-        --bind 'alt-u:reload(grep "USER" "$colored_list")' \
-        --bind 'alt-s:reload(grep "SYSTEM" "$colored_list")' \
-        --bind 'alt-g:reload(grep "[0-9]\+\.[0-9]\+G" "$colored_list")' \
-        --bind 'alt-r:reload(cat "$colored_list")' \
-        --preview 'apt show $(echo {} | awk "{print \$1}") 2>/dev/null | head -25' \
+        --preview 'pkg_info=$(echo {} | sed "s/|.*//"); pkg_name=$(echo "$pkg_info" | awk "{print \$2}"); pkg_type=$(echo {} | awk -F"|" "{print \$NF}"); case "$pkg_type" in apt) apt show "$pkg_name" 2>/dev/null | head -25;; snap) snap info "$pkg_name" 2>/dev/null | head -25;; flatpak) flatpak info "$pkg_name" 2>/dev/null | head -25;; esac' \
         --preview-window 'right:50%:wrap:hidden' \
         --height 100% \
         --layout reverse \
@@ -1180,10 +1648,18 @@ run_gum_uninstaller() {
         return
     fi
 
-    # Extract package names from selected items (remove size, category, and age info)
-    # Format is: package_name [CATEGORY] (size) | age emoji
-    local package_names=$(echo "$selected" | awk '{print $1}')
-    local package_count=$(echo "$package_names" | wc -l)
+    # Extract package names and types from selected items
+    # Format is: [TYPE] package_name [CATEGORY] (size) | age emoji|pkg_type
+    local packages_info=$(mktemp)
+    echo "$selected" | while IFS= read -r line; do
+        # Remove ANSI color codes and extract package info
+        local clean_line=$(echo "$line" | sed 's/\x1b\[[0-9;]*m//g')
+        local pkg_name=$(echo "$clean_line" | awk '{print $2}')
+        local pkg_type=$(echo "$clean_line" | awk -F'|' '{print $NF}')
+        echo "$pkg_name|$pkg_type"
+    done > "$packages_info"
+
+    local package_count=$(wc -l < "$packages_info")
 
     # Check if any SYSTEM packages are selected and warn
     local has_system=false
@@ -1191,11 +1667,11 @@ run_gum_uninstaller() {
 
     if [[ "$has_system" == true ]]; then
         echo ""
-        gum style --foreground 196 --bold "⚠️  WARNING: System Packages Selected!"
+        gum style --foreground 196 --bold "WARNING: System Packages Selected!"
         gum style --foreground 226 "You have selected SYSTEM packages. Removing these may:"
-        gum style --foreground 226 "  • Break system functionality"
-        gum style --foreground 226 "  • Prevent system updates"
-        gum style --foreground 226 "  • Cause boot failures"
+        gum style --foreground 226 "  - Break system functionality"
+        gum style --foreground 226 "  - Prevent system updates"
+        gum style --foreground 226 "  - Cause boot failures"
         echo ""
 
         if ! gum confirm "Do you understand the risks and want to continue?"; then
@@ -1205,104 +1681,109 @@ run_gum_uninstaller() {
         echo ""
     fi
 
-    # If only one package selected, show detailed info
-    if [[ $package_count -eq 1 ]]; then
-        echo ""
-        gum style --foreground 212 --bold "Selected Package Details:"
-        echo ""
-        apt show "$package_names" 2>/dev/null | head -20
-    else
-        # PERFORMANCE OPTIMIZATION: Use cached metadata (no recalculation!)
-        echo ""
-        gum style --foreground 212 --bold "Selected Packages ($package_count):"
-        gum style --foreground 147 "═══════════════════════════════════════════════════════════════"
-        echo ""
+    # Show selected packages summary
+    echo ""
+    gum style --foreground 212 --bold "Selected Packages ($package_count):"
+    gum style --foreground 147 "────────────────────────────────────────────────────────────────"
+    echo ""
 
-        local total_size=0
-        echo "$package_names" | while IFS= read -r pkg; do
-            # Retrieve cached metadata (format: size_kb|age_color|category|size_display|age_indicator|age_emoji)
-            local cached="${pkg_cache[$pkg]}"
-            if [[ -n "$cached" ]]; then
-                IFS='|' read -r pkg_size age_color category size_display age_indicator age_emoji <<< "$cached"
+    # Display selected packages with their types
+    while IFS='|' read -r pkg pkg_type; do
+        local type_label=""
+        local type_color="147"
+        case "$pkg_type" in
+            apt) type_label="[APT]"; type_color="147" ;;
+            snap) type_label="[SNAP]"; type_color="214" ;;
+            flatpak) type_label="[FLAT]"; type_color="117" ;;
+        esac
 
-                # Display with color based on age (from cache)
-                gum style --foreground "$age_color" "  ☑ $(printf '%-30s' "$pkg") [$(printf '%-6s' "$category")] ($(printf '%6s' "$size_display")) | $age_indicator $age_emoji"
-
-                # Accumulate total size
-                total_size=$((total_size + pkg_size))
-            fi
-        done
-
-        # Calculate total size (pure bash - no awk spawning)
-        echo ""
-        if (( total_size > 1048576 )); then
-            total_display=$(printf "%.1fG" "$(echo "scale=1; $total_size/1048576" | bc)")
-        elif (( total_size > 1024 )); then
-            total_display=$(printf "%.0fM" "$(( total_size / 1024 ))")
-        else
-            total_display="${total_size}K"
-        fi
-        gum style --foreground 212 --bold "Total size to free: $total_display"
-    fi
-
+        gum style --foreground "$type_color" "  [x] $type_label $pkg"
+    done < "$packages_info"
     echo ""
 
     # Confirm uninstallation
-    if [[ $package_count -eq 1 ]]; then
-        if ! gum confirm "Uninstall $package_names and remove config files?"; then
-            gum style --foreground 226 "Uninstall cancelled."
-            return
-        fi
-    else
-        if ! gum confirm "Uninstall $package_count packages and remove their config files?"; then
-            gum style --foreground 226 "Uninstall cancelled."
-            return
-        fi
+    if ! gum confirm "Uninstall $package_count package(s) and remove their config files?"; then
+        gum style --foreground 226 "Uninstall cancelled."
+        rm -f "$packages_info"
+        return
     fi
 
     echo ""
 
-    # PERFORMANCE OPTIMIZATION: Batch uninstall all packages in single apt transaction
-    local success=false
+    # Uninstall packages based on type
+    local success_count=0
+    local fail_count=0
 
-    # Convert newline-separated list to space-separated for apt
-    local packages_space=$(echo "$package_names" | tr '\n' ' ')
+    while IFS='|' read -r pkg pkg_type; do
+        case "$pkg_type" in
+            apt)
+                gum spin --spinner dot --title "Uninstalling APT package: $pkg..." -- \
+                    sudo apt purge -y "$pkg" 2>&1 | tee -a /tmp/fub-uninstall.log
 
-    if [[ $package_count -eq 1 ]]; then
-        gum spin --spinner dot --title "Uninstalling $package_names..." -- \
-            sudo apt purge -y $packages_space 2>&1 | tee /tmp/fub-uninstall.log
-    else
-        # Batch uninstall (5-10x faster than one-by-one)
-        gum spin --spinner dot --title "Uninstalling $package_count packages in batch..." -- \
-            sudo apt purge -y $packages_space 2>&1 | tee /tmp/fub-uninstall.log
-    fi
+                if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
+                    gum style --foreground 82 "[OK] Removed [APT]: $pkg"
+                    ((success_count++))
+                else
+                    gum style --foreground 196 "[FAIL] Failed [APT]: $pkg"
+                    ((fail_count++))
+                fi
+                ;;
+            snap)
+                gum spin --spinner dot --title "Uninstalling Snap package: $pkg..." -- \
+                    sudo snap remove "$pkg" 2>&1 | tee -a /tmp/fub-uninstall.log
 
-    # Check if uninstall succeeded
-    if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
-        success=true
-    fi
+                if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
+                    gum style --foreground 82 "[OK] Removed [SNAP]: $pkg"
+                    ((success_count++))
+                else
+                    gum style --foreground 196 "[FAIL] Failed [SNAP]: $pkg"
+                    ((fail_count++))
+                fi
+                ;;
+            flatpak)
+                gum spin --spinner dot --title "Uninstalling Flatpak package: $pkg..." -- \
+                    sudo flatpak uninstall -y "$pkg" 2>&1 | tee -a /tmp/fub-uninstall.log
 
-    # Run autoremove to clean up dependencies
+                if [[ ${PIPESTATUS[0]} -eq 0 ]]; then
+                    gum style --foreground 82 "[OK] Removed [FLATPAK]: $pkg"
+                    ((success_count++))
+                else
+                    gum style --foreground 196 "[FAIL] Failed [FLATPAK]: $pkg"
+                    ((fail_count++))
+                fi
+                ;;
+        esac
+    done < "$packages_info"
+
+    # Clean up dependencies (APT only)
     echo ""
-    gum spin --spinner dot --title "Cleaning up unused dependencies..." -- \
-        sudo apt autoremove -y 2>&1 | tee -a /tmp/fub-uninstall.log
+    if grep -q "|apt$" "$packages_info"; then
+        gum spin --spinner dot --title "Cleaning up unused APT dependencies..." -- \
+            sudo apt autoremove -y 2>&1 | tee -a /tmp/fub-uninstall.log
+    fi
 
+    # Clean up unused Flatpak runtimes
+    if grep -q "|flatpak$" "$packages_info"; then
+        gum spin --spinner dot --title "Cleaning up unused Flatpak runtimes..." -- \
+            sudo flatpak uninstall --unused -y 2>&1 | tee -a /tmp/fub-uninstall.log
+    fi
+
+    rm -f "$packages_info"
     echo ""
 
     # Show results
-    if [[ "$success" == true ]]; then
-        if [[ $package_count -eq 1 ]]; then
-            gum style --border rounded --border-foreground 82 --padding "1 2" \
-                "$(gum style --foreground 82 --bold '✅ Package uninstalled successfully!')"
-        else
-            gum style --border rounded --border-foreground 82 --padding "1 2" \
-                "$(gum style --foreground 82 --bold "✅ $package_count packages uninstalled!")"
-        fi
-    else
-        gum style --border rounded --border-foreground 196 --padding "1 2" \
-            "$(gum style --foreground 196 --bold '❌ Uninstallation failed')"
-        gum style --foreground 147 "Check log: /tmp/fub-uninstall.log"
+    if [[ $success_count -gt 0 ]]; then
+        gum style --border rounded --border-foreground 82 --padding "1 2" \
+            "$(gum style --foreground 82 --bold "[SUCCESS] Uninstalled $success_count package(s)")"
     fi
+
+    if [[ $fail_count -gt 0 ]]; then
+        gum style --border rounded --border-foreground 196 --padding "1 2" \
+            "$(gum style --foreground 196 --bold "[ERROR] Failed to uninstall $fail_count package(s)")"
+    fi
+
+    echo ""
+    gum style --foreground 147 "Full log saved: /tmp/fub-uninstall.log"
 }
 
 # =============================================================================
