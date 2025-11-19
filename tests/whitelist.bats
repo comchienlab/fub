@@ -23,7 +23,7 @@ teardown_file() {
 setup() {
     rm -rf "$HOME/.config"
     mkdir -p "$HOME"
-    WHITELIST_PATH="$HOME/.config/mole/whitelist"
+    WHITELIST_PATH="$HOME/.config/fub/whitelist"
 }
 
 @test "patterns_equivalent treats paths with tilde expansion as equal" {
@@ -64,7 +64,7 @@ setup() {
 
 @test "load_whitelist falls back to defaults when config missing" {
     rm -f "$WHITELIST_PATH"
-    HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/whitelist_manager.sh'; rm -f \"\$HOME/.config/mole/whitelist\"; load_whitelist; printf '%s\n' \"\${CURRENT_WHITELIST_PATTERNS[@]}\"" > "$HOME/current_whitelist.txt"
+    HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/whitelist_manager.sh'; rm -f \"\$HOME/.config/fub/whitelist\"; load_whitelist; printf '%s\n' \"\${CURRENT_WHITELIST_PATTERNS[@]}\"" > "$HOME/current_whitelist.txt"
     HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/whitelist_manager.sh'; printf '%s\n' \"\${DEFAULT_WHITELIST_PATTERNS[@]}\"" > "$HOME/default_whitelist.txt"
 
     current=()

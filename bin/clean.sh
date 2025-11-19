@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mole - Deeper system cleanup
+# Fub - Deeper system cleanup
 # Complete cleanup with smart password handling
 
 set -euo pipefail
@@ -44,7 +44,7 @@ declare -a WHITELIST_PATTERNS=()
 WHITELIST_WARNINGS=()
 
 # Load user-defined whitelist
-if [[ -f "$HOME/.config/mole/whitelist" ]]; then
+if [[ -f "$HOME/.config/fub/whitelist" ]]; then
     while IFS= read -r line; do
         # Trim whitespace
         line="${line#${line%%[![:space:]]*}}"
@@ -88,7 +88,7 @@ if [[ -f "$HOME/.config/mole/whitelist" ]]; then
         fi
         [[ "$duplicate" == "true" ]] && continue
         WHITELIST_PATTERNS+=("$line")
-    done < "$HOME/.config/mole/whitelist"
+    done < "$HOME/.config/fub/whitelist"
 else
     WHITELIST_PATTERNS=("${DEFAULT_WHITELIST_PATTERNS[@]}")
 fi
@@ -292,7 +292,7 @@ safe_clean() {
     # Show progress indicator for potentially slow operations
     if [[ ${#existing_paths[@]} -gt 3 ]]; then
         local total_paths=${#existing_paths[@]}
-        if [[ -t 1 ]]; then MOLE_SPINNER_PREFIX="  " start_inline_spinner "Scanning $total_paths items..."; fi
+        if [[ -t 1 ]]; then FUB_SPINNER_PREFIX="  " start_inline_spinner "Scanning $total_paths items..."; fi
         local temp_dir
         temp_dir=$(create_temp_dir)
 
@@ -321,7 +321,7 @@ safe_clean() {
                 # Update progress every 10 items for smoother display
                 if [[ -t 1 ]] && ((completed % 10 == 0)); then
                     stop_inline_spinner
-                    MOLE_SPINNER_PREFIX="  " start_inline_spinner "Scanning items ($completed/$total_paths)..."
+                    FUB_SPINNER_PREFIX="  " start_inline_spinner "Scanning items ($completed/$total_paths)..."
                 fi
             fi
         done
@@ -358,7 +358,7 @@ safe_clean() {
     else
         # Show progress for small batches too (simpler jobs)
         local total_paths=${#existing_paths[@]}
-        if [[ -t 1 ]]; then MOLE_SPINNER_PREFIX="  " start_inline_spinner "Scanning $total_paths items..."; fi
+        if [[ -t 1 ]]; then FUB_SPINNER_PREFIX="  " start_inline_spinner "Scanning $total_paths items..."; fi
 
         for path in "${existing_paths[@]}"; do
             local size_bytes
@@ -422,7 +422,7 @@ clean_ds_store_tree() {
     local spinner_active="false"
 
     if [[ -t 1 ]]; then
-        MOLE_SPINNER_PREFIX="  "
+        FUB_SPINNER_PREFIX="  "
         start_inline_spinner "Cleaning Finder metadata..."
         spinner_active="true"
     fi
@@ -909,17 +909,17 @@ perform_cleanup() {
     safe_clean /usr/local/var/homebrew/locks/* "Homebrew lock files (Intel)"
     if command -v brew > /dev/null 2>&1; then
         if [[ "$DRY_RUN" != "true" ]]; then
-            if [[ -t 1 ]]; then MOLE_SPINNER_PREFIX="  " start_inline_spinner "Homebrew cleanup..."; fi
+            if [[ -t 1 ]]; then FUB_SPINNER_PREFIX="  " start_inline_spinner "Homebrew cleanup..."; fi
 
             # Run brew cleanup with timeout
             local brew_output=""
             local brew_success=false
-            local timeout_seconds=${MO_BREW_TIMEOUT:-120}
+            local timeout_seconds=${FUB_BREW_TIMEOUT:-120}
             local brew_tmp_file
             brew_tmp_file=$(create_temp_file)
 
             # Run brew cleanup in background with manual timeout
-            # Deep clean with -s --prune=all (default 2 minutes, configurable via MO_BREW_TIMEOUT)
+            # Deep clean with -s --prune=all (default 2 minutes, configurable via FUB_BREW_TIMEOUT)
             (brew cleanup -s --prune=all > "$brew_tmp_file" 2>&1) &
             local brew_pid=$!
             local elapsed=0
@@ -1001,7 +1001,7 @@ perform_cleanup() {
     # Clean project build caches in home directory (safe - can be rebuilt)
     # Find .next/cache directories (limit depth to avoid slow scans)
     if [[ -t 1 ]]; then
-        MOLE_SPINNER_PREFIX="  "
+        FUB_SPINNER_PREFIX="  "
         start_inline_spinner "Searching Next.js caches..."
     fi
     while IFS= read -r next_dir; do
@@ -1021,7 +1021,7 @@ perform_cleanup() {
 
     # Clean Python bytecode cache (limit depth to avoid slow scans)
     if [[ -t 1 ]]; then
-        MOLE_SPINNER_PREFIX="  "
+        FUB_SPINNER_PREFIX="  "
         start_inline_spinner "Searching Python caches..."
     fi
     while IFS= read -r pycache; do
@@ -1286,7 +1286,7 @@ perform_cleanup() {
     local -r ORPHAN_AGE_THRESHOLD=60 # 60 days - good balance between safety and cleanup
 
     # Build list of installed application bundle identifiers
-    MOLE_SPINNER_PREFIX="  " start_inline_spinner "Scanning installed applications..."
+    FUB_SPINNER_PREFIX="  " start_inline_spinner "Scanning installed applications..."
     local installed_bundles=$(create_temp_file)
 
     # Simplified: only scan primary locations (reduces scan time by ~70%)
@@ -1371,7 +1371,7 @@ perform_cleanup() {
     }
 
     # Unified orphaned resource scanner (caches, logs, states, webkit, HTTP, cookies)
-    MOLE_SPINNER_PREFIX="  " start_inline_spinner "Scanning orphaned app resources..."
+    FUB_SPINNER_PREFIX="  " start_inline_spinner "Scanning orphaned app resources..."
 
     # Define resource types to scan
     local -a resource_types=(
@@ -1589,7 +1589,7 @@ perform_cleanup() {
     # ===== Check for large project dependencies =====
     start_section "Large project dependencies"
 
-    if [[ -t 1 ]]; then MOLE_SPINNER_PREFIX="  " start_inline_spinner "Scanning project directories..."; fi
+    if [[ -t 1 ]]; then FUB_SPINNER_PREFIX="  " start_inline_spinner "Scanning project directories..."; fi
 
     local node_modules_size=0
     local node_modules_count=0

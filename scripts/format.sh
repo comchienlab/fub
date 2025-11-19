@@ -1,5 +1,5 @@
 #!/bin/bash
-# Format all shell scripts in the Mole project
+# Format all shell scripts in the Fub project
 #
 # Usage:
 #   ./scripts/format.sh           # Format all scripts

@@ -26,7 +26,7 @@ setup() {
 }
 
 teardown() {
-    unset MO_SPINNER_CHARS || true
+    unset FUB_SPINNER_CHARS || true
 }
 
 @test "mo_spinner_chars returns default sequence when unset" {
@@ -34,9 +34,9 @@ teardown() {
     [ "$result" = "|/-\\" ]
 }
 
-@test "mo_spinner_chars respects MO_SPINNER_CHARS override" {
-    export MO_SPINNER_CHARS="abcd"
-    result="$(HOME="$HOME" MO_SPINNER_CHARS="$MO_SPINNER_CHARS" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/common.sh'; mo_spinner_chars")"
+@test "mo_spinner_chars respects FUB_SPINNER_CHARS override" {
+    export FUB_SPINNER_CHARS="abcd"
+    result="$(HOME="$HOME" FUB_SPINNER_CHARS="$FUB_SPINNER_CHARS" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/common.sh'; mo_spinner_chars")"
     [ "$result" = "abcd" ]
 }
 
@@ -60,7 +60,7 @@ teardown() {
     stdout_output="$(HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/common.sh'; log_info '$message'")"
     [[ "$stdout_output" == *"$message"* ]]
 
-    local log_file="$HOME/.config/mole/mole.log"
+    local log_file="$HOME/.config/fub/mole.log"
     [[ -f "$log_file" ]]
     grep -q "INFO: $message" "$log_file"
 }
@@ -74,14 +74,14 @@ teardown() {
     [[ -s "$stderr_file" ]]
     grep -q "$message" "$stderr_file"
 
-    local log_file="$HOME/.config/mole/mole.log"
+    local log_file="$HOME/.config/fub/mole.log"
     [[ -f "$log_file" ]]
     grep -q "ERROR: $message" "$log_file"
 }
 
 @test "rotate_log_once only checks log size once per session" {
     # Create a log file exceeding the max size
-    local log_file="$HOME/.config/mole/mole.log"
+    local log_file="$HOME/.config/fub/mole.log"
     mkdir -p "$(dirname "$log_file")"
     dd if=/dev/zero of="$log_file" bs=1024 count=1100 2> /dev/null
 
@@ -89,8 +89,8 @@ teardown() {
     HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/common.sh'"
     [[ -f "${log_file}.old" ]]
 
-    # Verify MOLE_LOG_ROTATED was set (rotation happened)
-    result=$(HOME="$HOME" MOLE_LOG_ROTATED=1 bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/common.sh'; echo \$MOLE_LOG_ROTATED")
+    # Verify FUB_LOG_ROTATED was set (rotation happened)
+    result=$(HOME="$HOME" FUB_LOG_ROTATED=1 bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/common.sh'; echo \$FUB_LOG_ROTATED")
     [[ "$result" == "1" ]]
 }
 
@@ -197,7 +197,7 @@ EOF
     # Should not hang in non-interactive mode
     result=$(HOME="$HOME" bash --noprofile --norc << 'EOF'
 source "$PROJECT_ROOT/lib/common.sh"
-MOLE_SPINNER_PREFIX="  " start_inline_spinner "Testing..."
+FUB_SPINNER_PREFIX="  " start_inline_spinner "Testing..."
 sleep 0.1
 stop_inline_spinner
 echo "done"

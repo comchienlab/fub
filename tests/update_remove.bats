@@ -31,16 +31,16 @@ setup() {
 @test "update_via_homebrew reports already on latest version" {
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" bash --noprofile --norc << 'EOF'
 set -euo pipefail
-MOLE_TEST_BREW_UPDATE_OUTPUT="Updated 0 formulae"
-MOLE_TEST_BREW_UPGRADE_OUTPUT="Warning: mole 1.7.9 already installed"
-MOLE_TEST_BREW_LIST_OUTPUT="mole 1.7.9"
+FUB_TEST_BREW_UPDATE_OUTPUT="Updated 0 formulae"
+FUB_TEST_BREW_UPGRADE_OUTPUT="Warning: mole 1.7.9 already installed"
+FUB_TEST_BREW_LIST_OUTPUT="mole 1.7.9"
 start_inline_spinner() { :; }
 stop_inline_spinner() { :; }
 brew() {
   case "$1" in
-    update) echo "$MOLE_TEST_BREW_UPDATE_OUTPUT";;
-    upgrade) echo "$MOLE_TEST_BREW_UPGRADE_OUTPUT";;
-    list) if [[ "$2" == "--versions" ]]; then echo "$MOLE_TEST_BREW_LIST_OUTPUT"; fi ;;
+    update) echo "$FUB_TEST_BREW_UPDATE_OUTPUT";;
+    upgrade) echo "$FUB_TEST_BREW_UPGRADE_OUTPUT";;
+    list) if [[ "$2" == "--versions" ]]; then echo "$FUB_TEST_BREW_LIST_OUTPUT"; fi ;;
   esac
 }
 export -f brew start_inline_spinner stop_inline_spinner
@@ -97,7 +97,7 @@ EOF
     mkdir -p "$HOME/.local/bin"
     touch "$HOME/.local/bin/mole"
     touch "$HOME/.local/bin/mo"
-    mkdir -p "$HOME/.config/mole" "$HOME/.cache/mole"
+    mkdir -p "$HOME/.config/fub" "$HOME/.cache/fub"
 
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PATH="/usr/bin:/bin" bash --noprofile --norc << 'EOF'
 set -euo pipefail
@@ -110,6 +110,6 @@ EOF
     [ "$status" -eq 0 ]
     [ ! -f "$HOME/.local/bin/mole" ]
     [ ! -f "$HOME/.local/bin/mo" ]
-    [ ! -d "$HOME/.config/mole" ]
-    [ ! -d "$HOME/.cache/mole" ]
+    [ ! -d "$HOME/.config/fub" ]
+    [ ! -d "$HOME/.cache/fub" ]
 }

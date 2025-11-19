@@ -1,4 +1,4 @@
-module github.com/tw93/mole
+module github.com/tw93/fub
 
 go 1.24.0
 
