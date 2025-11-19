@@ -11,6 +11,7 @@ export LANG=C
 # Get script directory and source common functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/paths_ubuntu.sh"
 
 # Configuration
 SYSTEM_CLEAN=false
@@ -32,12 +33,10 @@ readonly PROTECTED_SW_DOMAINS=(
 readonly FINDER_METADATA_SENTINEL="FINDER_METADATA"
 # Default whitelist patterns (preselected, user can disable)
 declare -a DEFAULT_WHITELIST_PATTERNS=(
-    "$HOME/Library/Caches/ms-playwright*"
-    "$HOME/.cache/huggingface*"
+    "$USER_CACHE_DIR/ms-playwright*"
+    "$USER_CACHE_DIR/huggingface*"
     "$HOME/.m2/repository/*"
     "$HOME/.ollama/models/*"
-    "$HOME/Library/Caches/com.nssurge.surge-mac/*"
-    "$HOME/Library/Application Support/com.nssurge.surge-mac/*"
     "$FINDER_METADATA_SENTINEL"
 )
 declare -a WHITELIST_PATTERNS=()
@@ -71,7 +70,7 @@ if [[ -f "$HOME/.config/fub/whitelist" ]]; then
 
         # Prevent critical system directories
         case "$line" in
-            /System/* | /bin/* | /sbin/* | /usr/bin/* | /usr/sbin/* | /etc/* | /var/db/*)
+            /bin/* | /sbin/* | /usr/bin/* | /usr/sbin/* | /etc/* | /lib/* | /lib64/* | /boot/* | /sys/* | /proc/*)
                 WHITELIST_WARNINGS+=("Protected system path: $line")
                 continue
                 ;;
@@ -434,7 +433,7 @@ clean_ds_store_tree() {
         -path "*/.Trash" -prune -o
         -path "*/node_modules" -prune -o
         -path "*/.git" -prune -o
-        -path "*/Library/Caches" -prune -o
+        -path "*$SYSTEM_CACHE_DIR" -prune -o
     )
 
     # Build find command to avoid unbound array expansion with set -u
@@ -639,9 +638,9 @@ perform_cleanup() {
         start_section "Deep system"
 
         # Clean system caches more safely (only old files to avoid breaking running apps)
-        sudo find /Library/Caches -name "*.cache" -mtime +7 -delete 2> /dev/null || true
-        sudo find /Library/Caches -name "*.tmp" -mtime +7 -delete 2> /dev/null || true
-        sudo find /Library/Caches -type f -name "*.log" -mtime +30 -delete 2> /dev/null || true
+        sudo find $SYSTEM_CACHE_DIR -name "*.cache" -mtime +7 -delete 2> /dev/null || true
+        sudo find $SYSTEM_CACHE_DIR -name "*.tmp" -mtime +7 -delete 2> /dev/null || true
+        sudo find $SYSTEM_CACHE_DIR -type f -name "*.log" -mtime +30 -delete 2> /dev/null || true
 
         # Clean old temp files only (avoid breaking running processes)
         local tmp_cleaned=0
@@ -658,8 +657,8 @@ perform_cleanup() {
         [[ $tmp_cleaned -eq 1 ]] && log_success "Old system temp files (${TEMP_FILE_AGE_DAYS}+ days)"
 
         # Clean system crash reports and diagnostics
-        sudo find /Library/Logs/DiagnosticReports -type f -mtime +30 -delete 2> /dev/null || true
-        sudo find /Library/Logs/CrashReporter -type f -mtime +30 -delete 2> /dev/null || true
+        sudo find $SYSTEM_LOG_DIR/DiagnosticReports -type f -mtime +30 -delete 2> /dev/null || true
+        sudo find $SYSTEM_LOG_DIR/CrashReporter -type f -mtime +30 -delete 2> /dev/null || true
         log_success "Old system crash reports (30+ days)"
 
         # Clean old system logs (keep recent ones for troubleshooting)
@@ -669,6 +668,105 @@ perform_cleanup() {
 
         sudo rm -rf /Library/Updates/* 2> /dev/null || true
         log_success "System library caches and updates"
+
+        end_section
+    fi
+
+    # ===== Ubuntu-specific system cleanup =====
+    if [[ "$SYSTEM_CLEAN" == "true" ]]; then
+        start_section "Ubuntu system cleanup"
+
+        # 1. APT cache cleanup
+        if command -v apt-get &>/dev/null; then
+            local apt_cache_before=$(du -sb /var/cache/apt/archives 2>/dev/null | awk '{print $1}')
+            if [[ "$DRY_RUN" != "true" ]]; then
+                sudo apt-get clean -y &>/dev/null || true
+                sudo apt-get autoclean -y &>/dev/null || true
+            fi
+            local apt_cache_after=$(du -sb /var/cache/apt/archives 2>/dev/null | awk '{print $1}')
+            local apt_saved=$((apt_cache_before - apt_cache_after))
+            if [[ $apt_saved -gt 0 ]]; then
+                log_success "APT package cache ($(numfmt --to=iec --suffix=B $apt_saved))"
+            fi
+        fi
+
+        # 2. Journal log cleanup
+        if command -v journalctl &>/dev/null; then
+            local journal_before=$(du -sb /var/log/journal 2>/dev/null | awk '{print $1}')
+            if [[ "$DRY_RUN" != "true" ]]; then
+                sudo journalctl --vacuum-time=7d --vacuum-size=100M &>/dev/null || true
+            fi
+            local journal_after=$(du -sb /var/log/journal 2>/dev/null | awk '{print $1}')
+            local journal_saved=$((journal_before - journal_after))
+            if [[ $journal_saved -gt 0 ]]; then
+                log_success "System journal logs ($(numfmt --to=iec --suffix=B $journal_saved))"
+            fi
+        fi
+
+        # 3. Old kernel cleanup
+        if command -v apt-get &>/dev/null; then
+            if [[ "$DRY_RUN" != "true" ]]; then
+                local kernel_output=$(sudo apt-get autoremove --purge -y 2>&1)
+                if echo "$kernel_output" | grep -q "linux-image"; then
+                    log_success "Old kernel packages removed"
+                fi
+            else
+                local old_kernels=$(dpkg -l | grep -E 'linux-image-[0-9]' | grep -v "$(uname -r)" | wc -l)
+                if [[ $old_kernels -gt 1 ]]; then
+                    log_success "Would remove $((old_kernels - 1)) old kernel(s) [DRY RUN]"
+                fi
+            fi
+        fi
+
+        # 4. Snap revision cleanup
+        if command -v snap &>/dev/null; then
+            if [[ "$DRY_RUN" != "true" ]]; then
+                # Set retention to 2 versions
+                sudo snap set system refresh.retain=2 2>/dev/null || true
+                # Remove disabled snaps
+                snap list --all 2>/dev/null | awk '/disabled/{print $1, $3}' | \
+                while read snapname revision; do
+                    sudo snap remove "$snapname" --revision="$revision" 2>/dev/null || true
+                done
+                log_success "Snap old revisions removed"
+            else
+                local disabled_snaps=$(snap list --all 2>/dev/null | grep disabled | wc -l)
+                if [[ $disabled_snaps -gt 0 ]]; then
+                    log_success "Would remove $disabled_snaps disabled snap revision(s) [DRY RUN]"
+                fi
+            fi
+        fi
+
+        # 5. Flatpak unused dependencies
+        if command -v flatpak &>/dev/null; then
+            if [[ "$DRY_RUN" != "true" ]]; then
+                flatpak uninstall --unused -y &>/dev/null || true
+                log_success "Flatpak unused runtimes removed"
+            fi
+        fi
+
+        # 6. Docker cleanup (aggressive)
+        if command -v docker &>/dev/null && sudo docker info &>/dev/null; then
+            local docker_before=$(sudo du -sb /var/lib/docker 2>/dev/null | awk '{print $1}')
+            if [[ "$DRY_RUN" != "true" ]]; then
+                sudo docker system prune -a --volumes -f &>/dev/null || true
+            fi
+            local docker_after=$(sudo du -sb /var/lib/docker 2>/dev/null | awk '{print $1}')
+            local docker_saved=$((docker_before - docker_after))
+            if [[ $docker_saved -gt 0 ]]; then
+                log_success "Docker images and volumes ($(numfmt --to=iec --suffix=B $docker_saved))"
+            fi
+        fi
+
+        # 7. Core dumps cleanup
+        if [[ -d /var/crash ]]; then
+            sudo rm -rf /var/crash/* 2>/dev/null || true
+            log_success "System crash dumps"
+        fi
+        if [[ -d /var/lib/systemd/coredump ]]; then
+            sudo rm -rf /var/lib/systemd/coredump/* 2>/dev/null || true
+            log_success "Systemd core dumps"
+        fi
 
         end_section
     fi
@@ -683,40 +781,43 @@ perform_cleanup() {
 
     # ===== 2. User essentials =====
     start_section "User essentials"
-    safe_clean ~/Library/Caches/* "User app cache"
-    safe_clean ~/Library/Logs/* "User app logs"
-    safe_clean ~/.Trash/* "Trash"
+    safe_clean $USER_CACHE_DIR/* "User app cache"
+    safe_clean $USER_STATE_DIR/* "User app logs"
+    safe_clean $TRASH_FILES_DIR/* "Trash files"
+    safe_clean $TRASH_INFO_DIR/* "Trash metadata"
+    safe_clean $THUMBNAIL_CACHE_DIR/* "Thumbnail cache"
+    safe_clean $THUMBNAIL_LEGACY_DIR/* "Legacy thumbnail cache"
 
-    # Empty trash on mounted volumes
-    if [[ -d "/Volumes" ]]; then
-        for volume in /Volumes/*; do
-            [[ -d "$volume" && -d "$volume/.Trashes" && -w "$volume" ]] || continue
+    # Empty trash on mounted volumes (Ubuntu: /media and /mnt)
+    for mount_base in /media/$USER /mnt; do
+        if [[ -d "$mount_base" ]]; then
+            for volume in "$mount_base"/*; do
+                [[ -d "$volume" && -w "$volume" ]] || continue
 
-            # Skip network volumes
-            local fs_type=$(df -T "$volume" 2> /dev/null | tail -1 | awk '{print $2}')
-            case "$fs_type" in
-                nfs | smbfs | afpfs | cifs | webdav) continue ;;
-            esac
+                # Skip network volumes
+                local fs_type=$(df -T "$volume" 2> /dev/null | tail -1 | awk '{print $2}')
+                case "$fs_type" in
+                    nfs | cifs | smbfs | nfs4) continue ;;
+                esac
 
-            # Verify volume is mounted
-            if mount | grep -q "on $volume "; then
+                # Check for .Trash-* directories (Ubuntu/FreeDesktop trash)
                 if [[ "$DRY_RUN" != "true" ]]; then
-                    find "$volume/.Trashes" -mindepth 1 -maxdepth 1 -exec rm -rf {} \; 2> /dev/null || true
+                    find "$volume" -maxdepth 1 -name ".Trash-*" -type d -exec rm -rf {} \; 2> /dev/null || true
                 fi
-            fi
-        done
-    fi
+            done
+        fi
+    done
 
     safe_clean ~/Library/Application\ Support/CrashReporter/* "Crash reports"
     safe_clean ~/Library/DiagnosticReports/* "Diagnostic reports"
-    safe_clean ~/Library/Caches/com.apple.QuickLook.thumbnailcache "QuickLook thumbnails"
-    safe_clean ~/Library/Caches/Quick\ Look/* "QuickLook cache"
+    safe_clean $USER_CACHE_DIR/com.apple.QuickLook.thumbnailcache "QuickLook thumbnails"
+    safe_clean $USER_CACHE_DIR/Quick\ Look/* "QuickLook cache"
     # Skip: affects Bluetooth audio service registration
-    # safe_clean ~/Library/Caches/com.apple.LaunchServices* "Launch services cache"
-    safe_clean ~/Library/Caches/com.apple.iconservices* "Icon services cache"
-    safe_clean ~/Library/Caches/CloudKit/* "CloudKit cache"
+    # safe_clean $USER_CACHE_DIR/com.apple.LaunchServices* "Launch services cache"
+    safe_clean $USER_CACHE_DIR/com.apple.iconservices* "Icon services cache"
+    safe_clean $USER_CACHE_DIR/CloudKit/* "CloudKit cache"
     # Skip: may affect renamed Bluetooth device pairing
-    # safe_clean ~/Library/Caches/com.apple.bird* "iCloud cache"
+    # safe_clean $USER_CACHE_DIR/com.apple.bird* "iCloud cache"
 
     # Clean incomplete downloads
     safe_clean ~/Downloads/*.download "Incomplete downloads (Safari)"
@@ -758,52 +859,52 @@ perform_cleanup() {
     # ===== 3. macOS system caches =====
     start_section "macOS system caches"
     safe_clean ~/Library/Saved\ Application\ State/* "Saved application states"
-    safe_clean ~/Library/Caches/com.apple.spotlight "Spotlight cache"
+    safe_clean $USER_CACHE_DIR/com.apple.spotlight "Spotlight cache"
     # Skip: may store Bluetooth device info
-    # safe_clean ~/Library/Caches/com.apple.metadata "Metadata cache"
-    safe_clean ~/Library/Caches/com.apple.FontRegistry "Font registry cache"
-    safe_clean ~/Library/Caches/com.apple.ATS "Font cache"
-    safe_clean ~/Library/Caches/com.apple.photoanalysisd "Photo analysis cache"
-    safe_clean ~/Library/Caches/com.apple.akd "Apple ID cache"
-    safe_clean ~/Library/Caches/com.apple.Safari/Webpage\ Previews/* "Safari webpage previews"
+    # safe_clean $USER_CACHE_DIR/com.apple.metadata "Metadata cache"
+    safe_clean $USER_CACHE_DIR/com.apple.FontRegistry "Font registry cache"
+    safe_clean $USER_CACHE_DIR/com.apple.ATS "Font cache"
+    safe_clean $USER_CACHE_DIR/com.apple.photoanalysisd "Photo analysis cache"
+    safe_clean $USER_CACHE_DIR/com.apple.akd "Apple ID cache"
+    safe_clean $USER_CACHE_DIR/com.apple.Safari/Webpage\ Previews/* "Safari webpage previews"
     # Mail envelope index and backup index are intentionally not cleaned (issue #32)
     safe_clean ~/Library/Application\ Support/CloudDocs/session/db/* "iCloud session cache"
 
     # Additional system data reducers
-    safe_clean ~/Library/Caches/com.apple.Safari/fsCachedData/* "Safari cached data"
-    safe_clean ~/Library/Caches/com.apple.WebKit.WebContent/* "WebKit content cache"
-    safe_clean ~/Library/Caches/com.apple.WebKit.Networking/* "WebKit network cache"
+    safe_clean $USER_CACHE_DIR/com.apple.Safari/fsCachedData/* "Safari cached data"
+    safe_clean $USER_CACHE_DIR/com.apple.WebKit.WebContent/* "WebKit content cache"
+    safe_clean $USER_CACHE_DIR/com.apple.WebKit.Networking/* "WebKit network cache"
     end_section
 
     # ===== 4. Sandboxed app caches =====
     start_section "Sandboxed app caches"
-    safe_clean ~/Library/Containers/com.apple.wallpaper.agent/Data/Library/Caches/* "Wallpaper agent cache"
-    safe_clean ~/Library/Containers/com.apple.mediaanalysisd/Data/Library/Caches/* "Media analysis cache"
-    safe_clean ~/Library/Containers/com.apple.AppStore/Data/Library/Caches/* "App Store cache"
-    safe_clean ~/Library/Containers/com.apple.configurator.xpc.InternetService/Data/tmp/* "Apple Configurator temp files"
-    safe_clean ~/Library/Containers/*/Data/Library/Caches/* "Sandboxed app caches"
+    safe_clean $USER_DATA_DIR/containers/com.apple.wallpaper.agent/Data$SYSTEM_CACHE_DIR/* "Wallpaper agent cache"
+    safe_clean $USER_DATA_DIR/containers/com.apple.mediaanalysisd/Data$SYSTEM_CACHE_DIR/* "Media analysis cache"
+    safe_clean $USER_DATA_DIR/containers/com.apple.AppStore/Data$SYSTEM_CACHE_DIR/* "App Store cache"
+    safe_clean $USER_DATA_DIR/containers/com.apple.configurator.xpc.InternetService/Data/tmp/* "Apple Configurator temp files"
+    safe_clean $USER_DATA_DIR/containers/*/Data$SYSTEM_CACHE_DIR/* "Sandboxed app caches"
     end_section
 
     # ===== 5. Browsers =====
     start_section "Browsers"
-    safe_clean ~/Library/Caches/com.apple.Safari/* "Safari cache"
+    safe_clean $USER_CACHE_DIR/com.apple.Safari/* "Safari cache"
 
     # Chrome/Chromium
-    safe_clean ~/Library/Caches/Google/Chrome/* "Chrome cache"
+    safe_clean $USER_CACHE_DIR/Google/Chrome/* "Chrome cache"
     safe_clean ~/Library/Application\ Support/Google/Chrome/*/Application\ Cache/* "Chrome app cache"
     safe_clean ~/Library/Application\ Support/Google/Chrome/*/GPUCache/* "Chrome GPU cache"
-    safe_clean ~/Library/Caches/Chromium/* "Chromium cache"
+    safe_clean $USER_CACHE_DIR/Chromium/* "Chromium cache"
 
-    safe_clean ~/Library/Caches/com.microsoft.edgemac/* "Edge cache"
-    safe_clean ~/Library/Caches/company.thebrowser.Browser/* "Arc cache"
-    safe_clean ~/Library/Caches/company.thebrowser.dia/* "Dia cache"
-    safe_clean ~/Library/Caches/BraveSoftware/Brave-Browser/* "Brave cache"
-    safe_clean ~/Library/Caches/Firefox/* "Firefox cache"
-    safe_clean ~/Library/Caches/com.operasoftware.Opera/* "Opera cache"
-    safe_clean ~/Library/Caches/com.vivaldi.Vivaldi/* "Vivaldi cache"
-    safe_clean ~/Library/Caches/Comet/* "Comet cache"
-    safe_clean ~/Library/Caches/com.kagi.kagimacOS/* "Orion cache"
-    safe_clean ~/Library/Caches/zen/* "Zen cache"
+    safe_clean $USER_CACHE_DIR/com.microsoft.edgemac/* "Edge cache"
+    safe_clean $USER_CACHE_DIR/company.thebrowser.Browser/* "Arc cache"
+    safe_clean $USER_CACHE_DIR/company.thebrowser.dia/* "Dia cache"
+    safe_clean $USER_CACHE_DIR/BraveSoftware/Brave-Browser/* "Brave cache"
+    safe_clean $USER_CACHE_DIR/Firefox/* "Firefox cache"
+    safe_clean $USER_CACHE_DIR/com.operasoftware.Opera/* "Opera cache"
+    safe_clean $USER_CACHE_DIR/com.vivaldi.Vivaldi/* "Vivaldi cache"
+    safe_clean $USER_CACHE_DIR/Comet/* "Comet cache"
+    safe_clean $USER_CACHE_DIR/com.kagi.kagimacOS/* "Orion cache"
+    safe_clean $USER_CACHE_DIR/zen/* "Zen cache"
     safe_clean ~/Library/Application\ Support/Firefox/Profiles/*/cache2/* "Firefox profile cache"
 
     # Service Worker CacheStorage (all profiles)
@@ -815,34 +916,34 @@ perform_cleanup() {
         [[ "$sw_path" == *"Arc"* ]] && browser_name="Arc"
         [[ "$profile_name" != "Default" ]] && browser_name="$browser_name ($profile_name)"
         clean_service_worker_cache "$browser_name" "$sw_path"
-    done < <(find "$HOME/Library/Application Support/Google/Chrome" \
-        "$HOME/Library/Application Support/Microsoft Edge" \
-        "$HOME/Library/Application Support/BraveSoftware/Brave-Browser" \
-        "$HOME/Library/Application Support/Arc/User Data" \
+    done < <(find "$USER_DATA_DIR/Google/Chrome" \
+        "$USER_DATA_DIR/Microsoft Edge" \
+        "$USER_DATA_DIR/BraveSoftware/Brave-Browser" \
+        "$USER_DATA_DIR/Arc/User Data" \
         -type d -name "CacheStorage" -path "*/Service Worker/*" 2> /dev/null)
     end_section
 
     # ===== 6. Cloud storage =====
     start_section "Cloud storage"
-    safe_clean ~/Library/Caches/com.dropbox.* "Dropbox cache"
-    safe_clean ~/Library/Caches/com.getdropbox.dropbox "Dropbox cache"
-    safe_clean ~/Library/Caches/com.google.GoogleDrive "Google Drive cache"
-    safe_clean ~/Library/Caches/com.baidu.netdisk "Baidu Netdisk cache"
-    safe_clean ~/Library/Caches/com.alibaba.teambitiondisk "Alibaba Cloud cache"
-    safe_clean ~/Library/Caches/com.box.desktop "Box cache"
-    safe_clean ~/Library/Caches/com.microsoft.OneDrive "OneDrive cache"
+    safe_clean $USER_CACHE_DIR/com.dropbox.* "Dropbox cache"
+    safe_clean $USER_CACHE_DIR/com.getdropbox.dropbox "Dropbox cache"
+    safe_clean $USER_CACHE_DIR/com.google.GoogleDrive "Google Drive cache"
+    safe_clean $USER_CACHE_DIR/com.baidu.netdisk "Baidu Netdisk cache"
+    safe_clean $USER_CACHE_DIR/com.alibaba.teambitiondisk "Alibaba Cloud cache"
+    safe_clean $USER_CACHE_DIR/com.box.desktop "Box cache"
+    safe_clean $USER_CACHE_DIR/com.microsoft.OneDrive "OneDrive cache"
     end_section
 
     # ===== 7. Office applications =====
     start_section "Office applications"
-    safe_clean ~/Library/Caches/com.microsoft.Word "Microsoft Word cache"
-    safe_clean ~/Library/Caches/com.microsoft.Excel "Microsoft Excel cache"
-    safe_clean ~/Library/Caches/com.microsoft.Powerpoint "Microsoft PowerPoint cache"
-    safe_clean ~/Library/Caches/com.microsoft.Outlook/* "Microsoft Outlook cache"
-    safe_clean ~/Library/Caches/com.apple.iWork.* "Apple iWork cache"
-    safe_clean ~/Library/Caches/com.kingsoft.wpsoffice.mac "WPS Office cache"
-    safe_clean ~/Library/Caches/org.mozilla.thunderbird/* "Thunderbird cache"
-    safe_clean ~/Library/Caches/com.apple.mail/* "Apple Mail cache"
+    safe_clean $USER_CACHE_DIR/com.microsoft.Word "Microsoft Word cache"
+    safe_clean $USER_CACHE_DIR/com.microsoft.Excel "Microsoft Excel cache"
+    safe_clean $USER_CACHE_DIR/com.microsoft.Powerpoint "Microsoft PowerPoint cache"
+    safe_clean $USER_CACHE_DIR/com.microsoft.Outlook/* "Microsoft Outlook cache"
+    safe_clean $USER_CACHE_DIR/com.apple.iWork.* "Apple iWork cache"
+    safe_clean $USER_CACHE_DIR/com.kingsoft.wpsoffice.mac "WPS Office cache"
+    safe_clean $USER_CACHE_DIR/org.mozilla.thunderbird/* "Thunderbird cache"
+    safe_clean $USER_CACHE_DIR/com.apple.mail/* "Apple Mail cache"
     end_section
 
     # ===== 8. Developer tools =====
@@ -873,7 +974,7 @@ perform_cleanup() {
     fi
 
     safe_clean ~/.cache/pip/* "pip cache directory"
-    safe_clean ~/Library/Caches/pip/* "pip cache (macOS)"
+    safe_clean $USER_CACHE_DIR/pip/* "pip cache (macOS)"
     safe_clean ~/.pyenv/cache/* "pyenv cache"
 
     if command -v go > /dev/null 2>&1; then
@@ -885,7 +986,7 @@ perform_cleanup() {
         note_activity
     fi
 
-    safe_clean ~/Library/Caches/go-build/* "Go build cache"
+    safe_clean $USER_CACHE_DIR/go-build/* "Go build cache"
     safe_clean ~/go/pkg/mod/cache/* "Go module cache"
     safe_clean ~/.cargo/registry/cache/* "Rust cargo cache"
 
@@ -904,7 +1005,7 @@ perform_cleanup() {
     safe_clean ~/.aws/cli/cache/* "AWS CLI cache"
     safe_clean ~/.config/gcloud/logs/* "Google Cloud logs"
     safe_clean ~/.azure/logs/* "Azure CLI logs"
-    safe_clean ~/Library/Caches/Homebrew/* "Homebrew cache"
+    safe_clean $USER_CACHE_DIR/Homebrew/* "Homebrew cache"
     safe_clean /opt/homebrew/var/homebrew/locks/* "Homebrew lock files (M series)"
     safe_clean /usr/local/var/homebrew/locks/* "Homebrew lock files (Intel)"
     if command -v brew > /dev/null 2>&1; then
@@ -1036,17 +1137,17 @@ perform_cleanup() {
     if [[ -t 1 ]]; then
         stop_inline_spinner
     fi
-    safe_clean ~/Library/Caches/Google/AndroidStudio*/* "Android Studio cache"
-    safe_clean ~/Library/Caches/com.unity3d.*/* "Unity cache"
-    safe_clean ~/Library/Caches/com.jetbrains.toolbox/* "JetBrains Toolbox cache"
-    safe_clean ~/Library/Caches/com.postmanlabs.mac/* "Postman cache"
-    safe_clean ~/Library/Caches/com.konghq.insomnia/* "Insomnia cache"
-    safe_clean ~/Library/Caches/com.tinyapp.TablePlus/* "TablePlus cache"
-    safe_clean ~/Library/Caches/com.mongodb.compass/* "MongoDB Compass cache"
-    safe_clean ~/Library/Caches/com.figma.Desktop/* "Figma cache"
-    safe_clean ~/Library/Caches/com.github.GitHubDesktop/* "GitHub Desktop cache"
-    safe_clean ~/Library/Caches/com.microsoft.VSCode/* "VS Code cache"
-    safe_clean ~/Library/Caches/com.sublimetext.*/* "Sublime Text cache"
+    safe_clean $USER_CACHE_DIR/Google/AndroidStudio*/* "Android Studio cache"
+    safe_clean $USER_CACHE_DIR/com.unity3d.*/* "Unity cache"
+    safe_clean $USER_CACHE_DIR/com.jetbrains.toolbox/* "JetBrains Toolbox cache"
+    safe_clean $USER_CACHE_DIR/com.postmanlabs.mac/* "Postman cache"
+    safe_clean $USER_CACHE_DIR/com.konghq.insomnia/* "Insomnia cache"
+    safe_clean $USER_CACHE_DIR/com.tinyapp.TablePlus/* "TablePlus cache"
+    safe_clean $USER_CACHE_DIR/com.mongodb.compass/* "MongoDB Compass cache"
+    safe_clean $USER_CACHE_DIR/com.figma.Desktop/* "Figma cache"
+    safe_clean $USER_CACHE_DIR/com.github.GitHubDesktop/* "GitHub Desktop cache"
+    safe_clean $USER_CACHE_DIR/com.microsoft.VSCode/* "VS Code cache"
+    safe_clean $USER_CACHE_DIR/com.sublimetext.*/* "Sublime Text cache"
     safe_clean ~/.cache/poetry/* "Poetry cache"
     safe_clean ~/.cache/uv/* "uv cache"
     safe_clean ~/.cache/ruff/* "Ruff cache"
@@ -1067,9 +1168,9 @@ perform_cleanup() {
     safe_clean ~/.sbt/* "SBT cache"
     safe_clean ~/.docker/buildx/cache/* "Docker BuildX cache"
     safe_clean ~/.cache/terraform/* "Terraform cache"
-    safe_clean ~/Library/Caches/com.getpaw.Paw/* "Paw API cache"
-    safe_clean ~/Library/Caches/com.charlesproxy.charles/* "Charles Proxy cache"
-    safe_clean ~/Library/Caches/com.proxyman.NSProxy/* "Proxyman cache"
+    safe_clean $USER_CACHE_DIR/com.getpaw.Paw/* "Paw API cache"
+    safe_clean $USER_CACHE_DIR/com.charlesproxy.charles/* "Charles Proxy cache"
+    safe_clean $USER_CACHE_DIR/com.proxyman.NSProxy/* "Proxyman cache"
     safe_clean ~/.grafana/cache/* "Grafana cache"
     safe_clean ~/.prometheus/data/wal/* "Prometheus WAL cache"
     safe_clean ~/.jenkins/workspace/*/target/* "Jenkins workspace cache"
@@ -1083,7 +1184,7 @@ perform_cleanup() {
     safe_clean ~/.sonar/* "SonarQube cache"
     safe_clean ~/.cache/eslint/* "ESLint cache"
     safe_clean ~/.cache/prettier/* "Prettier cache"
-    safe_clean ~/Library/Caches/CocoaPods/* "CocoaPods cache"
+    safe_clean $USER_CACHE_DIR/CocoaPods/* "CocoaPods cache"
     safe_clean ~/.bundle/cache/* "Ruby Bundler cache"
     safe_clean ~/.composer/cache/* "PHP Composer cache"
     safe_clean ~/.nuget/packages/* "NuGet packages cache"
@@ -1091,29 +1192,29 @@ perform_cleanup() {
     safe_clean ~/.pub-cache/* "Dart Pub cache"
     safe_clean ~/.cache/curl/* "curl cache"
     safe_clean ~/.cache/wget/* "wget cache"
-    safe_clean ~/Library/Caches/curl/* "curl cache (macOS)"
-    safe_clean ~/Library/Caches/wget/* "wget cache (macOS)"
+    safe_clean $USER_CACHE_DIR/curl/* "curl cache (macOS)"
+    safe_clean $USER_CACHE_DIR/wget/* "wget cache (macOS)"
     safe_clean ~/.cache/pre-commit/* "pre-commit cache"
     safe_clean ~/.gitconfig.bak* "Git config backup"
     safe_clean ~/.cache/flutter/* "Flutter cache"
     safe_clean ~/.gradle/daemon/* "Gradle daemon logs"
     safe_clean ~/.android/build-cache/* "Android build cache"
     safe_clean ~/.android/cache/* "Android SDK cache"
-    safe_clean ~/Library/Developer/Xcode/iOS\ DeviceSupport/*/Symbols/System/Library/Caches/* "iOS device cache"
-    safe_clean ~/Library/Developer/Xcode/UserData/IB\ Support/* "Xcode Interface Builder cache"
+    safe_clean $USER_DATA_DIR/developer/Xcode/iOS\ DeviceSupport/*/Symbols/System$SYSTEM_CACHE_DIR/* "iOS device cache"
+    safe_clean $USER_DATA_DIR/developer/Xcode/UserData/IB\ Support/* "Xcode Interface Builder cache"
     safe_clean ~/.cache/swift-package-manager/* "Swift package manager cache"
     safe_clean ~/.cache/bazel/* "Bazel cache"
     safe_clean ~/.cache/zig/* "Zig cache"
-    safe_clean ~/Library/Caches/deno/* "Deno cache"
-    safe_clean ~/Library/Caches/com.sequel-ace.sequel-ace/* "Sequel Ace cache"
-    safe_clean ~/Library/Caches/com.eggerapps.Sequel-Pro/* "Sequel Pro cache"
-    safe_clean ~/Library/Caches/redis-desktop-manager/* "Redis Desktop Manager cache"
-    safe_clean ~/Library/Caches/com.navicat.* "Navicat cache"
-    safe_clean ~/Library/Caches/com.dbeaver.* "DBeaver cache"
-    safe_clean ~/Library/Caches/com.redis.RedisInsight "Redis Insight cache"
-    safe_clean ~/Library/Caches/SentryCrash/* "Sentry crash reports"
-    safe_clean ~/Library/Caches/KSCrash/* "KSCrash reports"
-    safe_clean ~/Library/Caches/com.crashlytics.data/* "Crashlytics data"
+    safe_clean $USER_CACHE_DIR/deno/* "Deno cache"
+    safe_clean $USER_CACHE_DIR/com.sequel-ace.sequel-ace/* "Sequel Ace cache"
+    safe_clean $USER_CACHE_DIR/com.eggerapps.Sequel-Pro/* "Sequel Pro cache"
+    safe_clean $USER_CACHE_DIR/redis-desktop-manager/* "Redis Desktop Manager cache"
+    safe_clean $USER_CACHE_DIR/com.navicat.* "Navicat cache"
+    safe_clean $USER_CACHE_DIR/com.dbeaver.* "DBeaver cache"
+    safe_clean $USER_CACHE_DIR/com.redis.RedisInsight "Redis Insight cache"
+    safe_clean $USER_CACHE_DIR/SentryCrash/* "Sentry crash reports"
+    safe_clean $USER_CACHE_DIR/KSCrash/* "KSCrash reports"
+    safe_clean $USER_CACHE_DIR/com.crashlytics.data/* "Crashlytics data"
     # Skip: HTTPStorages contains login sessions
     # safe_clean ~/Library/HTTPStorages/* "HTTP storage cache"
 
@@ -1121,130 +1222,130 @@ perform_cleanup() {
 
     # ===== 9. Development applications =====
     start_section "Development applications"
-    safe_clean ~/Library/Developer/Xcode/DerivedData/* "Xcode derived data"
+    safe_clean $USER_DATA_DIR/developer/Xcode/DerivedData/* "Xcode derived data"
     # Skip: Archives contain signed App Store builds
-    # safe_clean ~/Library/Developer/Xcode/Archives/* "Xcode archives"
-    safe_clean ~/Library/Developer/CoreSimulator/Caches/* "Simulator cache"
-    safe_clean ~/Library/Developer/CoreSimulator/Devices/*/data/tmp/* "Simulator temp files"
-    safe_clean ~/Library/Caches/com.apple.dt.Xcode/* "Xcode cache"
-    safe_clean ~/Library/Developer/Xcode/iOS\ Device\ Logs/* "iOS device logs"
-    safe_clean ~/Library/Developer/Xcode/watchOS\ Device\ Logs/* "watchOS device logs"
-    safe_clean ~/Library/Developer/Xcode/Products/* "Xcode build products"
+    # safe_clean $USER_DATA_DIR/developer/Xcode/Archives/* "Xcode archives"
+    safe_clean $USER_DATA_DIR/developer/CoreSimulator/Caches/* "Simulator cache"
+    safe_clean $USER_DATA_DIR/developer/CoreSimulator/Devices/*/data/tmp/* "Simulator temp files"
+    safe_clean $USER_CACHE_DIR/com.apple.dt.Xcode/* "Xcode cache"
+    safe_clean $USER_DATA_DIR/developer/Xcode/iOS\ Device\ Logs/* "iOS device logs"
+    safe_clean $USER_DATA_DIR/developer/Xcode/watchOS\ Device\ Logs/* "watchOS device logs"
+    safe_clean $USER_DATA_DIR/developer/Xcode/Products/* "Xcode build products"
     safe_clean ~/Library/Application\ Support/Code/logs/* "VS Code logs"
     safe_clean ~/Library/Application\ Support/Code/Cache/* "VS Code cache"
     safe_clean ~/Library/Application\ Support/Code/CachedExtensions/* "VS Code extension cache"
     safe_clean ~/Library/Application\ Support/Code/CachedData/* "VS Code data cache"
-    safe_clean ~/Library/Logs/IntelliJIdea*/* "IntelliJ IDEA logs"
-    safe_clean ~/Library/Logs/PhpStorm*/* "PhpStorm logs"
-    safe_clean ~/Library/Logs/PyCharm*/* "PyCharm logs"
-    safe_clean ~/Library/Logs/WebStorm*/* "WebStorm logs"
-    safe_clean ~/Library/Logs/GoLand*/* "GoLand logs"
-    safe_clean ~/Library/Logs/CLion*/* "CLion logs"
-    safe_clean ~/Library/Logs/DataGrip*/* "DataGrip logs"
-    safe_clean ~/Library/Caches/JetBrains/* "JetBrains cache"
+    safe_clean $USER_STATE_DIR/IntelliJIdea*/* "IntelliJ IDEA logs"
+    safe_clean $USER_STATE_DIR/PhpStorm*/* "PhpStorm logs"
+    safe_clean $USER_STATE_DIR/PyCharm*/* "PyCharm logs"
+    safe_clean $USER_STATE_DIR/WebStorm*/* "WebStorm logs"
+    safe_clean $USER_STATE_DIR/GoLand*/* "GoLand logs"
+    safe_clean $USER_STATE_DIR/CLion*/* "CLion logs"
+    safe_clean $USER_STATE_DIR/DataGrip*/* "DataGrip logs"
+    safe_clean $USER_CACHE_DIR/JetBrains/* "JetBrains cache"
     safe_clean ~/Library/Application\ Support/discord/Cache/* "Discord cache"
     safe_clean ~/Library/Application\ Support/Slack/Cache/* "Slack cache"
-    safe_clean ~/Library/Caches/us.zoom.xos/* "Zoom cache"
-    safe_clean ~/Library/Caches/com.tencent.xinWeChat/* "WeChat cache"
-    safe_clean ~/Library/Caches/ru.keepcoder.Telegram/* "Telegram cache"
-    safe_clean ~/Library/Caches/com.openai.chat/* "ChatGPT cache"
-    safe_clean ~/Library/Caches/com.anthropic.claudefordesktop/* "Claude desktop cache"
-    safe_clean ~/Library/Logs/Claude/* "Claude logs"
-    safe_clean ~/Library/Caches/com.microsoft.teams2/* "Microsoft Teams cache"
-    safe_clean ~/Library/Caches/net.whatsapp.WhatsApp/* "WhatsApp cache"
-    safe_clean ~/Library/Caches/com.skype.skype/* "Skype cache"
-    safe_clean ~/Library/Caches/dd.work.exclusive4aliding/* "DingTalk (iDingTalk) cache"
-    safe_clean ~/Library/Caches/com.alibaba.AliLang.osx/* "AliLang security component"
+    safe_clean $USER_CACHE_DIR/us.zoom.xos/* "Zoom cache"
+    safe_clean $USER_CACHE_DIR/com.tencent.xinWeChat/* "WeChat cache"
+    safe_clean $USER_CACHE_DIR/ru.keepcoder.Telegram/* "Telegram cache"
+    safe_clean $USER_CACHE_DIR/com.openai.chat/* "ChatGPT cache"
+    safe_clean $USER_CACHE_DIR/com.anthropic.claudefordesktop/* "Claude desktop cache"
+    safe_clean $USER_STATE_DIR/Claude/* "Claude logs"
+    safe_clean $USER_CACHE_DIR/com.microsoft.teams2/* "Microsoft Teams cache"
+    safe_clean $USER_CACHE_DIR/net.whatsapp.WhatsApp/* "WhatsApp cache"
+    safe_clean $USER_CACHE_DIR/com.skype.skype/* "Skype cache"
+    safe_clean $USER_CACHE_DIR/dd.work.exclusive4aliding/* "DingTalk (iDingTalk) cache"
+    safe_clean $USER_CACHE_DIR/com.alibaba.AliLang.osx/* "AliLang security component"
     safe_clean ~/Library/Application\ Support/iDingTalk/log/* "DingTalk logs"
     safe_clean ~/Library/Application\ Support/iDingTalk/holmeslogs/* "DingTalk holmes logs"
-    safe_clean ~/Library/Caches/com.tencent.meeting/* "Tencent Meeting cache"
-    safe_clean ~/Library/Caches/com.tencent.WeWorkMac/* "WeCom cache"
-    safe_clean ~/Library/Caches/com.feishu.*/* "Feishu cache"
-    safe_clean ~/Library/Caches/com.bohemiancoding.sketch3/* "Sketch cache"
+    safe_clean $USER_CACHE_DIR/com.tencent.meeting/* "Tencent Meeting cache"
+    safe_clean $USER_CACHE_DIR/com.tencent.WeWorkMac/* "WeCom cache"
+    safe_clean $USER_CACHE_DIR/com.feishu.*/* "Feishu cache"
+    safe_clean $USER_CACHE_DIR/com.bohemiancoding.sketch3/* "Sketch cache"
     safe_clean ~/Library/Application\ Support/com.bohemiancoding.sketch3/cache/* "Sketch app cache"
-    safe_clean ~/Library/Caches/net.telestream.screenflow10/* "ScreenFlow cache"
-    safe_clean ~/Library/Caches/Adobe/* "Adobe cache"
-    safe_clean ~/Library/Caches/com.adobe.*/* "Adobe app caches"
-    safe_clean ~/Library/Caches/com.apple.FinalCut/* "Final Cut Pro cache"
-    safe_clean ~/Library/Caches/com.blackmagic-design.DaVinciResolve/* "DaVinci Resolve cache"
-    safe_clean ~/Library/Caches/com.adobe.PremierePro.*/* "Premiere Pro cache"
-    safe_clean ~/Library/Caches/org.blenderfoundation.blender/* "Blender cache"
-    safe_clean ~/Library/Caches/com.maxon.cinema4d/* "Cinema 4D cache"
-    safe_clean ~/Library/Caches/com.autodesk.*/* "Autodesk cache"
-    safe_clean ~/Library/Caches/com.sketchup.*/* "SketchUp cache"
-    safe_clean ~/Library/Caches/com.raycast.macos/* "Raycast cache"
-    safe_clean ~/Library/Caches/com.tw93.MiaoYan/* "MiaoYan cache"
-    safe_clean ~/Library/Caches/com.klee.desktop/* "Klee cache"
-    safe_clean ~/Library/Caches/klee_desktop/* "Klee desktop cache"
-    safe_clean ~/Library/Caches/com.orabrowser.app/* "Ora browser cache"
-    safe_clean ~/Library/Caches/com.filo.client/* "Filo cache"
-    safe_clean ~/Library/Caches/com.flomoapp.mac/* "Flomo cache"
-    safe_clean ~/Library/Caches/com.spotify.client/* "Spotify cache"
-    safe_clean ~/Library/Caches/com.apple.Music "Apple Music cache"
-    safe_clean ~/Library/Caches/com.apple.podcasts "Apple Podcasts cache"
-    safe_clean ~/Library/Caches/com.apple.TV/* "Apple TV cache"
-    safe_clean ~/Library/Caches/tv.plex.player.desktop "Plex cache"
-    safe_clean ~/Library/Caches/com.netease.163music "NetEase Music cache"
-    safe_clean ~/Library/Caches/com.tencent.QQMusic/* "QQ Music cache"
-    safe_clean ~/Library/Caches/com.kugou.mac/* "Kugou Music cache"
-    safe_clean ~/Library/Caches/com.kuwo.mac/* "Kuwo Music cache"
-    safe_clean ~/Library/Caches/com.colliderli.iina "IINA cache"
-    safe_clean ~/Library/Caches/org.videolan.vlc "VLC cache"
-    safe_clean ~/Library/Caches/io.mpv "MPV cache"
-    safe_clean ~/Library/Caches/com.iqiyi.player "iQIYI cache"
-    safe_clean ~/Library/Caches/com.tencent.tenvideo "Tencent Video cache"
-    safe_clean ~/Library/Caches/tv.danmaku.bili/* "Bilibili cache"
-    safe_clean ~/Library/Caches/com.douyu.*/* "Douyu cache"
-    safe_clean ~/Library/Caches/com.huya.*/* "Huya cache"
-    safe_clean ~/Library/Caches/net.xmac.aria2gui "Aria2 cache"
-    safe_clean ~/Library/Caches/org.m0k.transmission "Transmission cache"
-    safe_clean ~/Library/Caches/com.qbittorrent.qBittorrent "qBittorrent cache"
-    safe_clean ~/Library/Caches/com.downie.Downie-* "Downie cache"
-    safe_clean ~/Library/Caches/com.folx.*/* "Folx cache"
-    safe_clean ~/Library/Caches/com.charlessoft.pacifist/* "Pacifist cache"
-    safe_clean ~/Library/Caches/com.valvesoftware.steam/* "Steam cache"
+    safe_clean $USER_CACHE_DIR/net.telestream.screenflow10/* "ScreenFlow cache"
+    safe_clean $USER_CACHE_DIR/Adobe/* "Adobe cache"
+    safe_clean $USER_CACHE_DIR/com.adobe.*/* "Adobe app caches"
+    safe_clean $USER_CACHE_DIR/com.apple.FinalCut/* "Final Cut Pro cache"
+    safe_clean $USER_CACHE_DIR/com.blackmagic-design.DaVinciResolve/* "DaVinci Resolve cache"
+    safe_clean $USER_CACHE_DIR/com.adobe.PremierePro.*/* "Premiere Pro cache"
+    safe_clean $USER_CACHE_DIR/org.blenderfoundation.blender/* "Blender cache"
+    safe_clean $USER_CACHE_DIR/com.maxon.cinema4d/* "Cinema 4D cache"
+    safe_clean $USER_CACHE_DIR/com.autodesk.*/* "Autodesk cache"
+    safe_clean $USER_CACHE_DIR/com.sketchup.*/* "SketchUp cache"
+    safe_clean $USER_CACHE_DIR/com.raycast.macos/* "Raycast cache"
+    safe_clean $USER_CACHE_DIR/com.tw93.MiaoYan/* "MiaoYan cache"
+    safe_clean $USER_CACHE_DIR/com.klee.desktop/* "Klee cache"
+    safe_clean $USER_CACHE_DIR/klee_desktop/* "Klee desktop cache"
+    safe_clean $USER_CACHE_DIR/com.orabrowser.app/* "Ora browser cache"
+    safe_clean $USER_CACHE_DIR/com.filo.client/* "Filo cache"
+    safe_clean $USER_CACHE_DIR/com.flomoapp.mac/* "Flomo cache"
+    safe_clean $USER_CACHE_DIR/com.spotify.client/* "Spotify cache"
+    safe_clean $USER_CACHE_DIR/com.apple.Music "Apple Music cache"
+    safe_clean $USER_CACHE_DIR/com.apple.podcasts "Apple Podcasts cache"
+    safe_clean $USER_CACHE_DIR/com.apple.TV/* "Apple TV cache"
+    safe_clean $USER_CACHE_DIR/tv.plex.player.desktop "Plex cache"
+    safe_clean $USER_CACHE_DIR/com.netease.163music "NetEase Music cache"
+    safe_clean $USER_CACHE_DIR/com.tencent.QQMusic/* "QQ Music cache"
+    safe_clean $USER_CACHE_DIR/com.kugou.mac/* "Kugou Music cache"
+    safe_clean $USER_CACHE_DIR/com.kuwo.mac/* "Kuwo Music cache"
+    safe_clean $USER_CACHE_DIR/com.colliderli.iina "IINA cache"
+    safe_clean $USER_CACHE_DIR/org.videolan.vlc "VLC cache"
+    safe_clean $USER_CACHE_DIR/io.mpv "MPV cache"
+    safe_clean $USER_CACHE_DIR/com.iqiyi.player "iQIYI cache"
+    safe_clean $USER_CACHE_DIR/com.tencent.tenvideo "Tencent Video cache"
+    safe_clean $USER_CACHE_DIR/tv.danmaku.bili/* "Bilibili cache"
+    safe_clean $USER_CACHE_DIR/com.douyu.*/* "Douyu cache"
+    safe_clean $USER_CACHE_DIR/com.huya.*/* "Huya cache"
+    safe_clean $USER_CACHE_DIR/net.xmac.aria2gui "Aria2 cache"
+    safe_clean $USER_CACHE_DIR/org.m0k.transmission "Transmission cache"
+    safe_clean $USER_CACHE_DIR/com.qbittorrent.qBittorrent "qBittorrent cache"
+    safe_clean $USER_CACHE_DIR/com.downie.Downie-* "Downie cache"
+    safe_clean $USER_CACHE_DIR/com.folx.*/* "Folx cache"
+    safe_clean $USER_CACHE_DIR/com.charlessoft.pacifist/* "Pacifist cache"
+    safe_clean $USER_CACHE_DIR/com.valvesoftware.steam/* "Steam cache"
     safe_clean ~/Library/Application\ Support/Steam/htmlcache/* "Steam web cache"
-    safe_clean ~/Library/Caches/com.epicgames.EpicGamesLauncher/* "Epic Games cache"
-    safe_clean ~/Library/Caches/com.blizzard.Battle.net/* "Battle.net cache"
+    safe_clean $USER_CACHE_DIR/com.epicgames.EpicGamesLauncher/* "Epic Games cache"
+    safe_clean $USER_CACHE_DIR/com.blizzard.Battle.net/* "Battle.net cache"
     safe_clean ~/Library/Application\ Support/Battle.net/Cache/* "Battle.net app cache"
-    safe_clean ~/Library/Caches/com.ea.*/* "EA Origin cache"
-    safe_clean ~/Library/Caches/com.gog.galaxy/* "GOG Galaxy cache"
-    safe_clean ~/Library/Caches/com.riotgames.*/* "Riot Games cache"
-    safe_clean ~/Library/Caches/com.youdao.YoudaoDict "Youdao Dictionary cache"
-    safe_clean ~/Library/Caches/com.eudic.* "Eudict cache"
-    safe_clean ~/Library/Caches/com.bob-build.Bob "Bob Translation cache"
-    safe_clean ~/Library/Caches/com.cleanshot.* "CleanShot cache"
-    safe_clean ~/Library/Caches/com.reincubate.camo "Camo cache"
-    safe_clean ~/Library/Caches/com.xnipapp.xnip "Xnip cache"
-    safe_clean ~/Library/Caches/com.readdle.smartemail-Mac "Spark cache"
-    safe_clean ~/Library/Caches/com.airmail.* "Airmail cache"
-    safe_clean ~/Library/Caches/com.todoist.mac.Todoist "Todoist cache"
-    safe_clean ~/Library/Caches/com.any.do.* "Any.do cache"
+    safe_clean $USER_CACHE_DIR/com.ea.*/* "EA Origin cache"
+    safe_clean $USER_CACHE_DIR/com.gog.galaxy/* "GOG Galaxy cache"
+    safe_clean $USER_CACHE_DIR/com.riotgames.*/* "Riot Games cache"
+    safe_clean $USER_CACHE_DIR/com.youdao.YoudaoDict "Youdao Dictionary cache"
+    safe_clean $USER_CACHE_DIR/com.eudic.* "Eudict cache"
+    safe_clean $USER_CACHE_DIR/com.bob-build.Bob "Bob Translation cache"
+    safe_clean $USER_CACHE_DIR/com.cleanshot.* "CleanShot cache"
+    safe_clean $USER_CACHE_DIR/com.reincubate.camo "Camo cache"
+    safe_clean $USER_CACHE_DIR/com.xnipapp.xnip "Xnip cache"
+    safe_clean $USER_CACHE_DIR/com.readdle.smartemail-Mac "Spark cache"
+    safe_clean $USER_CACHE_DIR/com.airmail.* "Airmail cache"
+    safe_clean $USER_CACHE_DIR/com.todoist.mac.Todoist "Todoist cache"
+    safe_clean $USER_CACHE_DIR/com.any.do.* "Any.do cache"
     safe_clean ~/.zcompdump* "Zsh completion cache"
     safe_clean ~/.lesshst "less history"
     safe_clean ~/.viminfo.tmp "Vim temporary files"
     safe_clean ~/.wget-hsts "wget HSTS cache"
-    safe_clean ~/Library/Caches/com.runjuu.Input-Source-Pro/* "Input Source Pro cache"
-    safe_clean ~/Library/Caches/macos-wakatime.WakaTime/* "WakaTime cache"
-    safe_clean ~/Library/Caches/notion.id/* "Notion cache"
-    safe_clean ~/Library/Caches/md.obsidian/* "Obsidian cache"
-    safe_clean ~/Library/Caches/com.logseq.*/* "Logseq cache"
-    safe_clean ~/Library/Caches/com.bear-writer.*/* "Bear cache"
-    safe_clean ~/Library/Caches/com.evernote.*/* "Evernote cache"
-    safe_clean ~/Library/Caches/com.yinxiang.*/* "Yinxiang Note cache"
-    safe_clean ~/Library/Caches/com.runningwithcrayons.Alfred/* "Alfred cache"
-    safe_clean ~/Library/Caches/cx.c3.theunarchiver/* "The Unarchiver cache"
-    safe_clean ~/Library/Caches/com.teamviewer.*/* "TeamViewer cache"
-    safe_clean ~/Library/Caches/com.anydesk.*/* "AnyDesk cache"
-    safe_clean ~/Library/Caches/com.todesk.*/* "ToDesk cache"
-    safe_clean ~/Library/Caches/com.sunlogin.*/* "Sunlogin cache"
+    safe_clean $USER_CACHE_DIR/com.runjuu.Input-Source-Pro/* "Input Source Pro cache"
+    safe_clean $USER_CACHE_DIR/macos-wakatime.WakaTime/* "WakaTime cache"
+    safe_clean $USER_CACHE_DIR/notion.id/* "Notion cache"
+    safe_clean $USER_CACHE_DIR/md.obsidian/* "Obsidian cache"
+    safe_clean $USER_CACHE_DIR/com.logseq.*/* "Logseq cache"
+    safe_clean $USER_CACHE_DIR/com.bear-writer.*/* "Bear cache"
+    safe_clean $USER_CACHE_DIR/com.evernote.*/* "Evernote cache"
+    safe_clean $USER_CACHE_DIR/com.yinxiang.*/* "Yinxiang Note cache"
+    safe_clean $USER_CACHE_DIR/com.runningwithcrayons.Alfred/* "Alfred cache"
+    safe_clean $USER_CACHE_DIR/cx.c3.theunarchiver/* "The Unarchiver cache"
+    safe_clean $USER_CACHE_DIR/com.teamviewer.*/* "TeamViewer cache"
+    safe_clean $USER_CACHE_DIR/com.anydesk.*/* "AnyDesk cache"
+    safe_clean $USER_CACHE_DIR/com.todesk.*/* "ToDesk cache"
+    safe_clean $USER_CACHE_DIR/com.sunlogin.*/* "Sunlogin cache"
 
     end_section
 
     # ===== 10. Virtualization tools =====
     start_section "Virtualization tools"
-    safe_clean ~/Library/Caches/com.vmware.fusion "VMware Fusion cache"
-    safe_clean ~/Library/Caches/com.parallels.* "Parallels cache"
+    safe_clean $USER_CACHE_DIR/com.vmware.fusion "VMware Fusion cache"
+    safe_clean $USER_CACHE_DIR/com.parallels.* "Parallels cache"
     safe_clean ~/VirtualBox\ VMs/.cache "VirtualBox cache"
     safe_clean ~/.vagrant.d/tmp/* "Vagrant temporary files"
     end_section
@@ -1375,9 +1476,9 @@ perform_cleanup() {
 
     # Define resource types to scan
     local -a resource_types=(
-        "$HOME/Library/Caches|Caches|com.*:org.*:net.*:io.*"
-        "$HOME/Library/Logs|Logs|com.*:org.*:net.*:io.*"
-        "$HOME/Library/Saved Application State|States|*.savedState"
+        "$USER_CACHE_DIR|Caches|com.*:org.*:net.*:io.*"
+        "$USER_STATE_DIR|Logs|com.*:org.*:net.*:io.*"
+        "$USER_STATE_DIR|States|*.savedState"
         "$HOME/Library/WebKit|WebKit|com.*:org.*:net.*:io.*"
         "$HOME/Library/HTTPStorages|HTTP|com.*:org.*:net.*:io.*"
         "$HOME/Library/Cookies|Cookies|*.binarycookies"
@@ -1439,16 +1540,16 @@ perform_cleanup() {
     if [[ "$IS_M_SERIES" == "true" ]]; then
         start_section "Apple Silicon optimizations"
         safe_clean /Library/Apple/usr/share/rosetta/rosetta_update_bundle "Rosetta 2 cache"
-        safe_clean ~/Library/Caches/com.apple.rosetta.update "Rosetta 2 user cache"
-        safe_clean ~/Library/Caches/com.apple.amp.mediasevicesd "Apple Silicon media service cache"
+        safe_clean $USER_CACHE_DIR/com.apple.rosetta.update "Rosetta 2 user cache"
+        safe_clean $USER_CACHE_DIR/com.apple.amp.mediasevicesd "Apple Silicon media service cache"
         # Skip: iCloud sync cache, may affect device pairing
-        # safe_clean ~/Library/Caches/com.apple.bird.lsuseractivity "User activity cache"
+        # safe_clean $USER_CACHE_DIR/com.apple.bird.lsuseractivity "User activity cache"
         end_section
     fi
 
     # ===== 14. iOS device backups =====
     start_section "iOS device backups"
-    backup_dir="$HOME/Library/Application Support/MobileSync/Backup"
+    backup_dir="$USER_DATA_DIR/MobileSync/Backup"
     if [[ -d "$backup_dir" ]] && find "$backup_dir" -mindepth 1 -maxdepth 1 | read -r _; then
         backup_kb=$(du -sk "$backup_dir" 2> /dev/null | awk '{print $1}')
         if [[ -n "${backup_kb:-}" && "$backup_kb" -gt 102400 ]]; then
