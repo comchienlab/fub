@@ -6,12 +6,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/optimize_health.sh"
+source "$SCRIPT_DIR/lib/paths_ubuntu.sh"
 
 # Colors and icons from common.sh
 
 print_header() {
     echo ""
-    echo -e "${PURPLE}Optimize Your Mac${NC}"
+    echo -e "${PURPLE}Optimize Your Ubuntu System${NC}"
     echo ""
 }
 
@@ -63,16 +64,13 @@ announce_action() {
     echo -e "$line"
 }
 
-touchid_configured() {
+fingerprint_configured() {
     local pam_file="/etc/pam.d/sudo"
-    [[ -f "$pam_file" ]] && grep -q "pam_tid.so" "$pam_file" 2> /dev/null
+    [[ -f "$pam_file" ]] && grep -q "pam_fprintd.so" "$pam_file" 2> /dev/null
 }
 
-touchid_supported() {
-    if command -v bioutil > /dev/null 2>&1; then
-        bioutil -r 2> /dev/null | grep -q "Touch ID" && return 0
-    fi
-    [[ "$(uname -m)" == "arm64" ]]
+fingerprint_supported() {
+    command -v fprintd-list > /dev/null 2>&1
 }
 
 cleanup_path() {
@@ -170,52 +168,74 @@ execute_optimization() {
 
     case "$action" in
         system_maintenance)
-            echo -e "${BLUE}${ICON_ARROW}${NC} Rebuilding LaunchServices database..."
-            timeout 10 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -kill -r -domain local -domain system -domain user > /dev/null 2>&1 || true
-            echo -e "${GREEN}${ICON_SUCCESS}${NC} LaunchServices database rebuilt"
+            echo -e "${BLUE}${ICON_ARROW}${NC} Updating desktop database..."
+            if update-desktop-database ~/.local/share/applications 2> /dev/null && \
+               update-desktop-database /usr/share/applications 2> /dev/null; then
+                echo -e "${GREEN}${ICON_SUCCESS}${NC} Desktop database updated"
+            else
+                echo -e "${YELLOW}!${NC} Desktop database update had issues (non-critical)"
+            fi
+
+            echo -e "${BLUE}${ICON_ARROW}${NC} Updating MIME database..."
+            if update-mime-database ~/.local/share/mime 2> /dev/null; then
+                echo -e "${GREEN}${ICON_SUCCESS}${NC} MIME database updated"
+            else
+                echo -e "${YELLOW}!${NC} MIME database update had issues (non-critical)"
+            fi
 
             echo -e "${BLUE}${ICON_ARROW}${NC} Flushing DNS cache..."
-            if sudo dscacheutil -flushcache 2> /dev/null && sudo killall -HUP mDNSResponder 2> /dev/null; then
+            if sudo systemd-resolve --flush-caches 2> /dev/null || sudo resolvectl flush-caches 2> /dev/null; then
                 echo -e "${GREEN}${ICON_SUCCESS}${NC} DNS cache flushed"
             else
-                echo -e "${RED}${ICON_ERROR}${NC} Failed to flush DNS cache"
+                echo -e "${YELLOW}!${NC} Failed to flush DNS cache (non-critical)"
             fi
 
             echo -e "${BLUE}${ICON_ARROW}${NC} Purging memory cache..."
-            if sudo purge 2> /dev/null; then
+            if sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches > /dev/null 2>&1; then
                 echo -e "${GREEN}${ICON_SUCCESS}${NC} Memory cache purged"
             else
-                echo -e "${RED}${ICON_ERROR}${NC} Failed to purge memory"
+                echo -e "${YELLOW}!${NC} Failed to purge memory (non-critical)"
             fi
 
             echo -e "${BLUE}${ICON_ARROW}${NC} Rebuilding font cache..."
-            sudo atsutil databases -remove > /dev/null 2>&1
-            echo -e "${GREEN}${ICON_SUCCESS}${NC} Font cache rebuilt"
+            if fc-cache -fv > /dev/null 2>&1; then
+                echo -e "${GREEN}${ICON_SUCCESS}${NC} Font cache rebuilt"
+            else
+                echo -e "${YELLOW}!${NC} Font cache rebuild had issues (non-critical)"
+            fi
 
-            echo -e "${BLUE}${ICON_ARROW}${NC} Rebuilding Spotlight index..."
-            sudo mdutil -E / > /dev/null 2>&1 || true
-            echo -e "${GREEN}${ICON_SUCCESS}${NC} Spotlight index rebuilt"
+            echo -e "${BLUE}${ICON_ARROW}${NC} Updating locate database..."
+            if command -v updatedb > /dev/null 2>&1; then
+                sudo updatedb > /dev/null 2>&1 || true
+                echo -e "${GREEN}${ICON_SUCCESS}${NC} Locate database updated"
+            else
+                echo -e "${GRAY}   locate/mlocate not installed, skipping${NC}"
+            fi
             ;;
 
         startup_items)
-            echo -e "${BLUE}${ICON_ARROW}${NC} Opening Launch Agents directory..."
-            open ~/Library/LaunchAgents
-            open /Library/LaunchAgents
-            echo -e "${GREEN}${ICON_SUCCESS}${NC} Please review and disable unnecessary startup items"
-            echo -e "${GRAY}   Tip: Move unwanted .plist files to trash${NC}"
+            echo -e "${BLUE}${ICON_ARROW}${NC} Listing user systemd services..."
+            if systemctl --user list-unit-files --state=enabled 2>/dev/null; then
+                echo ""
+                echo -e "${GREEN}${ICON_SUCCESS}${NC} User systemd services listed above"
+                echo -e "${GRAY}   Tip: Disable with: systemctl --user disable <service>${NC}"
+                echo -e "${GRAY}   Config files: ~/.config/systemd/user/${NC}"
+            else
+                echo -e "${YELLOW}!${NC} Could not list systemd user services"
+            fi
             ;;
 
         cache_refresh)
-            echo -e "${BLUE}${ICON_ARROW}${NC} Resetting Quick Look cache..."
-            qlmanage -r cache > /dev/null 2>&1 || true
-            qlmanage -r > /dev/null 2>&1 || true
+            echo -e "${BLUE}${ICON_ARROW}${NC} Refreshing system caches..."
 
             local -a cache_targets=(
-                "$HOME/Library/Caches/com.apple.QuickLook.thumbnailcache|Quick Look thumbnails"
-                "$HOME/Library/Caches/com.apple.iconservices.store|Icon Services store"
-                "$HOME/Library/Caches/com.apple.iconservices|Icon Services cache"
-                "$HOME/Library/Caches/com.apple.Safari/WebKitCache|Safari WebKit cache"
-                "$HOME/Library/Caches/com.apple.Safari/Favicon|Safari favicon cache"
+                "$THUMBNAIL_CACHE_DIR|Thumbnail cache"
+                "$THUMBNAIL_LEGACY_DIR|Legacy thumbnail cache"
+                "$USER_CACHE_DIR/icon-cache.kcache|Icon cache"
+                "$USER_CACHE_DIR/qtshadercache|Qt shader cache"
+                "$CHROME_CACHE_DIR/Cache|Chrome cache"
+                "$CHROMIUM_CACHE_DIR/Cache|Chromium cache"
+                "$FIREFOX_CACHE_DIR/*/cache2|Firefox cache"
             )
 
             for target in "${cache_targets[@]}"; do
@@ -223,56 +243,63 @@ execute_optimization() {
                 cleanup_path "$target_path" "$label"
             done
 
-            echo -e "${GREEN}${ICON_SUCCESS}${NC} Finder and Safari caches refreshed"
+            echo -e "${GREEN}${ICON_SUCCESS}${NC} Browser and system caches refreshed"
             ;;
 
         maintenance_scripts)
-            echo -e "${BLUE}${ICON_ARROW}${NC} Running macOS periodic scripts..."
-            local periodic_cmd="/usr/sbin/periodic"
-            if [[ -x "$periodic_cmd" ]]; then
-                local periodic_output=""
-                if periodic_output=$(sudo "$periodic_cmd" daily weekly monthly 2>&1); then
-                    echo -e "${GREEN}${ICON_SUCCESS}${NC} Daily/weekly/monthly scripts completed"
+            echo -e "${BLUE}${ICON_ARROW}${NC} Running APT maintenance..."
+            if command -v apt-get > /dev/null 2>&1; then
+                if sudo apt-get autoclean -y > /dev/null 2>&1 && sudo apt-get autoremove -y > /dev/null 2>&1; then
+                    echo -e "${GREEN}${ICON_SUCCESS}${NC} APT maintenance completed"
                 else
-                    echo -e "${YELLOW}!${NC} periodic scripts reported an issue"
-                    printf '%s\n' "$periodic_output" | sed 's/^/    /'
+                    echo -e "${YELLOW}!${NC} APT maintenance had issues"
                 fi
             fi
 
-            echo -e "${BLUE}${ICON_ARROW}${NC} Rotating system logs..."
-            if sudo newsyslog > /dev/null 2>&1; then
-                echo -e "${GREEN}${ICON_SUCCESS}${NC} Log rotation complete"
+            echo -e "${BLUE}${ICON_ARROW}${NC} Vacuuming journal logs..."
+            if sudo journalctl --vacuum-time=7d --vacuum-size=100M > /dev/null 2>&1; then
+                echo -e "${GREEN}${ICON_SUCCESS}${NC} Journal log cleanup complete"
             else
-                echo -e "${YELLOW}!${NC} newsyslog reported an issue"
+                echo -e "${YELLOW}!${NC} journalctl vacuum had issues"
             fi
 
-            if [[ -x "/usr/libexec/repair_packages" ]]; then
-                echo -e "${BLUE}${ICON_ARROW}${NC} Repairing base system permissions..."
-                if sudo /usr/libexec/repair_packages --repair --standard-pkgs --volume / > /dev/null 2>&1; then
-                    echo -e "${GREEN}${ICON_SUCCESS}${NC} Base system permission repair complete"
-                else
-                    echo -e "${YELLOW}!${NC} repair_packages reported an issue"
-                fi
+            echo -e "${BLUE}${ICON_ARROW}${NC} Checking for broken packages..."
+            if sudo dpkg --configure -a > /dev/null 2>&1 && sudo apt-get check > /dev/null 2>&1; then
+                echo -e "${GREEN}${ICON_SUCCESS}${NC} Package system health verified"
+            else
+                echo -e "${YELLOW}!${NC} Package system check reported issues"
+            fi
+
+            echo -e "${BLUE}${ICON_ARROW}${NC} Updating file database..."
+            if command -v updatedb > /dev/null 2>&1; then
+                sudo updatedb > /dev/null 2>&1 || true
+                echo -e "${GREEN}${ICON_SUCCESS}${NC} File database updated"
+            else
+                echo -e "${GRAY}   locate/mlocate not installed, skipping${NC}"
             fi
             ;;
 
         log_cleanup)
             echo -e "${BLUE}${ICON_ARROW}${NC} Clearing diagnostic & crash logs..."
             local -a user_logs=(
-                "$HOME/Library/Logs/DiagnosticReports"
-                "$HOME/Library/Logs/CrashReporter"
-                "$HOME/Library/Logs/corecaptured"
+                "$USER_STATE_DIR"
+                "$HOME/.xsession-errors"
             )
             for target in "${user_logs[@]}"; do
-                cleanup_path "$target" "$(basename "$target")"
+                if [[ -f "$target" || -d "$target" ]]; then
+                    cleanup_path "$target" "$(basename "$target")"
+                fi
             done
 
-            if [[ -d "/Library/Logs/DiagnosticReports" ]]; then
-                sudo find /Library/Logs/DiagnosticReports -type f -name "*.crash" -delete 2> /dev/null || true
-                sudo find /Library/Logs/DiagnosticReports -type f -name "*.panic" -delete 2> /dev/null || true
-                echo -e "  ${GREEN}${ICON_SUCCESS}${NC} System diagnostic logs cleared"
-            else
-                echo -e "  ${GRAY}-${NC} No system diagnostic logs found"
+            # Clear system crash dumps
+            if [[ -d "$CORE_DUMP_DIR" ]]; then
+                sudo rm -rf "$CORE_DUMP_DIR"/* 2> /dev/null || true
+                echo -e "  ${GREEN}${ICON_SUCCESS}${NC} System crash dumps cleared"
+            fi
+
+            if [[ -d "$SYSTEMD_CORE_DUMP_DIR" ]]; then
+                sudo rm -rf "$SYSTEMD_CORE_DUMP_DIR"/* 2> /dev/null || true
+                echo -e "  ${GREEN}${ICON_SUCCESS}${NC} Systemd core dumps cleared"
             fi
             ;;
 

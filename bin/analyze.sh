@@ -1,5 +1,5 @@
 #!/bin/bash
-# Entry point for the Go-based disk analyzer binary bundled with Mole.
+# Entry point for the Go-based disk analyzer binary bundled with Fub.
 
 set -euo pipefail
 
@@ -9,5 +9,5 @@ if [[ -x "$GO_BIN" ]]; then
     exec "$GO_BIN" "$@"
 fi
 
-echo "Bundled analyzer binary not found. Please reinstall Fub or run mo update to restore it." >&2
+echo "Bundled analyzer binary not found. Please reinstall Fub or run fub update to restore it." >&2
 exit 1
