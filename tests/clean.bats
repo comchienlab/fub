@@ -24,7 +24,7 @@ setup() {
     export TERM="xterm-256color"
     rm -rf "${HOME:?}"/*
     rm -rf "$HOME/Library" "$HOME/.config"
-    mkdir -p "$HOME/Library/Caches" "$HOME/.config/mole"
+    mkdir -p "$HOME/Library/Caches" "$HOME/.config/fub"
 }
 
 @test "mo clean --dry-run skips system cleanup in non-interactive mode" {
@@ -49,7 +49,7 @@ setup() {
     mkdir -p "$HOME/Library/Caches/WhitelistedApp"
     echo "keep me" > "$HOME/Library/Caches/WhitelistedApp/data.tmp"
 
-    cat > "$HOME/.config/mole/whitelist" << EOF
+    cat > "$HOME/.config/fub/whitelist" << EOF
 $HOME/Library/Caches/WhitelistedApp*
 EOF
 
@@ -69,12 +69,12 @@ EOF
     [[ "$output" != *"Maven repository cache"* ]]
 }
 
-@test "mo clean respects MO_BREW_TIMEOUT environment variable" {
+@test "mo clean respects FUB_BREW_TIMEOUT environment variable" {
     if ! command -v brew > /dev/null 2>&1; then
         skip "Homebrew not installed"
     fi
 
-    run env HOME="$HOME" MO_BREW_TIMEOUT=5 "$PROJECT_ROOT/bin/clean.sh" --dry-run
+    run env HOME="$HOME" FUB_BREW_TIMEOUT=5 "$PROJECT_ROOT/bin/clean.sh" --dry-run
     [ "$status" -eq 0 ]
 }
 
@@ -82,7 +82,7 @@ EOF
     mkdir -p "$HOME/Documents"
     touch "$HOME/Documents/.DS_Store"
 
-    cat > "$HOME/.config/mole/whitelist" << EOF
+    cat > "$HOME/.config/fub/whitelist" << EOF
 FINDER_METADATA_SENTINEL
 EOF
 

@@ -4,7 +4,7 @@ set -euo pipefail
 
 # Ensure common.sh is loaded
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-[[ -z "${MOLE_COMMON_LOADED:-}" ]] && source "$SCRIPT_DIR/lib/common.sh"
+[[ -z "${FUB_COMMON_LOADED:-}" ]] && source "$SCRIPT_DIR/lib/common.sh"
 
 # Batch uninstall functionality with minimal confirmations
 # Replaces the overly verbose individual confirmation approach

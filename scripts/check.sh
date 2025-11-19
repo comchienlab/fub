@@ -1,5 +1,5 @@
 #!/bin/bash
-# Unified check script for Mole project
+# Unified check script for Fub project
 # Runs all quality checks in one command
 
 set -e
@@ -16,7 +16,7 @@ NC='\033[0m'
 
 cd "$PROJECT_ROOT"
 
-echo -e "${BLUE}=== Running Mole Quality Checks ===${NC}\n"
+echo -e "${BLUE}=== Running Fub Quality Checks ===${NC}\n"
 
 # 1. Format check
 echo -e "${YELLOW}1. Checking code formatting...${NC}"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mole Installation Script
+# Fub Installation Script
 
 set -euo pipefail
 
@@ -18,7 +18,7 @@ start_line_spinner() {
         echo -e "${BLUE}|${NC} $msg"
         return
     }
-    local chars="${MO_SPINNER_CHARS:-|/-\\}"
+    local chars="${FUB_SPINNER_CHARS:-|/-\\}"
     [[ -z "$chars" ]] && chars='|/-\\'
     local i=0
     (while true; do
@@ -55,7 +55,7 @@ log_confirm() { [[ ${VERBOSE} -eq 1 ]] && echo -e "${BLUE}${ICON_CONFIRM}${NC} $
 
 # Default installation directory
 INSTALL_DIR="/usr/local/bin"
-CONFIG_DIR="$HOME/.config/mole"
+CONFIG_DIR="$HOME/.config/fub"
 SOURCE_DIR=""
 
 # Default action (install|update)
@@ -63,7 +63,7 @@ ACTION="install"
 
 show_help() {
     cat << 'EOF'
-Mole Installation Script
+Fub Installation Script
 ========================
 
 USAGE:
@@ -71,21 +71,21 @@ USAGE:
 
 OPTIONS:
     --prefix PATH       Install to custom directory (default: /usr/local/bin)
-    --config PATH       Config directory (default: ~/.config/mole)
-    --update            Update Mole to the latest version
-    --uninstall         Uninstall mole
+    --config PATH       Config directory (default: ~/.config/fub)
+    --update            Update Fub to the latest version
+    --uninstall         Uninstall fub
     --help, -h          Show this help
 
 EXAMPLES:
     ./install.sh                    # Install to /usr/local/bin
     ./install.sh --prefix ~/.local/bin  # Install to custom directory
-    ./install.sh --update           # Update Mole in place
-    ./install.sh --uninstall       # Uninstall mole
+    ./install.sh --update           # Update Fub in place
+    ./install.sh --uninstall       # Uninstall fub
 
 The installer will:
-1. Copy mole binary and scripts to the install directory
+1. Copy fub binary and scripts to the install directory
 2. Set up config directory with all modules
-3. Make the mole command available system-wide
+3. Make the fub command available system-wide
 EOF
     echo ""
 }
@@ -96,7 +96,7 @@ resolve_source_dir() {
         return 0
     fi
 
-    # 1) If script is on disk, use its directory (only when mole executable present)
+    # 1) If script is on disk, use its directory (only when fub executable present)
     if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
         local script_dir
         script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -118,7 +118,7 @@ resolve_source_dir() {
     # Expand tmp now so trap doesn't depend on local scope
     trap "rm -rf '$tmp'" EXIT
 
-    start_line_spinner "Fetching Mole source..."
+    start_line_spinner "Fetching Fub source..."
     if command -v curl > /dev/null 2>&1; then
         if curl -fsSL -o "$tmp/mole.tar.gz" "https://github.com/tw93/mole/archive/refs/heads/main.tar.gz"; then
             stop_line_spinner
@@ -132,7 +132,7 @@ resolve_source_dir() {
     fi
     stop_line_spinner
 
-    start_line_spinner "Cloning Mole source..."
+    start_line_spinner "Cloning Fub source..."
     if command -v git > /dev/null 2>&1; then
         if git clone --depth=1 https://github.com/tw93/mole.git "$tmp/mole" > /dev/null 2>&1; then
             stop_line_spinner
@@ -219,7 +219,7 @@ check_requirements() {
             return 0
         fi
 
-        echo -e "${YELLOW}Mole is installed via Homebrew${NC}"
+        echo -e "${YELLOW}Fub is installed via Homebrew${NC}"
         echo ""
         echo "Choose one:"
         echo -e "  1. Update via Homebrew: ${GREEN}brew upgrade mole${NC}"
@@ -279,11 +279,11 @@ install_files() {
             log_success "Installed mole to $INSTALL_DIR"
         fi
     else
-        log_error "mole executable not found in ${SOURCE_DIR:-unknown}"
+        log_error "fub executable not found in ${SOURCE_DIR:-unknown}"
         exit 1
     fi
 
-    # Install mo alias for Mole if available
+    # Install mo alias for Fub if available
     if [[ -f "$SOURCE_DIR/mo" ]]; then
         if [[ "$source_dir_abs" == "$install_dir_abs" ]]; then
             log_success "mo alias already present"
@@ -351,11 +351,11 @@ verify_installation() {
 
     if [[ -x "$INSTALL_DIR/mole" ]] && [[ -f "$CONFIG_DIR/lib/common.sh" ]]; then
 
-        # Test if mole command works
+        # Test if fub command works
         if "$INSTALL_DIR/mole" --help > /dev/null 2>&1; then
             return 0
         else
-            log_warning "Mole command installed but may not be working properly"
+            log_warning "Fub command installed but may not be working properly"
         fi
     else
         log_error "Installation verification failed"
@@ -392,7 +392,7 @@ print_usage_summary() {
 
     echo ""
 
-    local message="Mole ${action} successfully"
+    local message="Fub ${action} successfully"
 
     if [[ "$action" == "updated" && -n "$previous_version" && -n "$new_version" && "$previous_version" != "$new_version" ]]; then
         message+=" (${previous_version} -> ${new_version})"
@@ -408,16 +408,16 @@ print_usage_summary() {
         echo "  mo                # Interactive menu"
         echo "  mo clean          # System cleanup"
         echo "  mo uninstall      # Remove applications"
-        echo "  mo update         # Update Mole to the latest version"
-        echo "  mo remove         # Remove Mole from the system"
+        echo "  mo update         # Update Fub to the latest version"
+        echo "  mo remove         # Remove Fub from the system"
         echo "  mo --version      # Show installed version"
         echo "  mo --help         # Show this help message"
     else
         echo "  $INSTALL_DIR/mo                # Interactive menu"
         echo "  $INSTALL_DIR/mo clean          # System cleanup"
         echo "  $INSTALL_DIR/mo uninstall      # Remove applications"
-        echo "  $INSTALL_DIR/mo update         # Update Mole to the latest version"
-        echo "  $INSTALL_DIR/mo remove         # Remove Mole from the system"
+        echo "  $INSTALL_DIR/mo update         # Update Fub to the latest version"
+        echo "  $INSTALL_DIR/mo remove         # Remove Fub from the system"
         echo "  $INSTALL_DIR/mo --version      # Show installed version"
         echo "  $INSTALL_DIR/mo --help         # Show this help message"
     fi
@@ -426,7 +426,7 @@ print_usage_summary() {
 
 # Uninstall function
 uninstall_mole() {
-    log_confirm "Uninstalling Mole"
+    log_confirm "Uninstalling Fub"
     echo ""
 
     # Remove executable
@@ -437,7 +437,7 @@ uninstall_mole() {
         else
             rm -f "$INSTALL_DIR/mole"
         fi
-        log_success "Removed mole executable"
+        log_success "Removed fub executable"
     fi
 
     if [[ -f "$INSTALL_DIR/mo" ]]; then
@@ -462,7 +462,7 @@ uninstall_mole() {
             ;;
         *)
             # Safe patterns: must be in user's home and end with 'mole'
-            if [[ "$CONFIG_DIR" == "$HOME/.config/mole" ]] ||
+            if [[ "$CONFIG_DIR" == "$HOME/.config/fub" ]] ||
                 [[ "$CONFIG_DIR" == "$HOME"/.*/mole ]]; then
                 is_safe=1
             fi
@@ -491,7 +491,7 @@ uninstall_mole() {
     fi
 
     echo ""
-    log_confirm "Mole uninstalled successfully"
+    log_confirm "Fub uninstalled successfully"
 }
 
 # Main installation function
@@ -520,7 +520,7 @@ perform_update() {
     check_requirements
 
     if command -v brew > /dev/null 2>&1 && brew list mole > /dev/null 2>&1; then
-        # Try to use shared function if available (when running from installed Mole)
+        # Try to use shared function if available (when running from installed Fub)
         resolve_source_dir 2> /dev/null || true
         if [[ -f "$SOURCE_DIR/lib/common.sh" ]]; then
             # shellcheck disable=SC1090,SC1091
@@ -539,9 +539,9 @@ perform_update() {
             fi
 
             if [[ -t 1 ]]; then
-                start_line_spinner "Upgrading Mole..."
+                start_line_spinner "Upgrading Fub..."
             else
-                echo "Upgrading Mole..."
+                echo "Upgrading Fub..."
             fi
             local upgrade_output
             upgrade_output=$(brew upgrade mole 2>&1) || true
@@ -564,7 +564,7 @@ perform_update() {
                 echo -e "${GREEN}✓${NC} Updated to latest version (${new_version:-$VERSION})"
             fi
 
-            rm -f "$HOME/.cache/mole/version_check" "$HOME/.cache/mole/update_message"
+            rm -f "$HOME/.cache/fub/version_check" "$HOME/.cache/fub/update_message"
         fi
         exit 0
     fi
@@ -573,7 +573,7 @@ perform_update() {
     installed_version="$(get_installed_version || true)"
 
     if [[ -z "$installed_version" ]]; then
-        log_warning "Mole is not currently installed in $INSTALL_DIR. Running fresh installation."
+        log_warning "Fub is not currently installed in $INSTALL_DIR. Running fresh installation."
         perform_install
         return
     fi
@@ -583,7 +583,7 @@ perform_update() {
     target_version="$(get_source_version || true)"
 
     if [[ -z "$target_version" ]]; then
-        log_error "Unable to determine the latest Mole version."
+        log_error "Unable to determine the latest Fub version."
         exit 1
     fi
 

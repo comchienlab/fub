@@ -1,14 +1,14 @@
 #!/bin/bash
-# Mole - Common Functions Library
+# Fub - Common Functions Library
 # Shared utilities and functions for all modules
 
 set -euo pipefail
 
 # Prevent multiple sourcing
-if [[ -n "${MOLE_COMMON_LOADED:-}" ]]; then
+if [[ -n "${FUB_COMMON_LOADED:-}" ]]; then
     return 0
 fi
-readonly MOLE_COMMON_LOADED=1
+readonly FUB_COMMON_LOADED=1
 
 # Color definitions (readonly for safety)
 readonly ESC=$'\033'
@@ -37,7 +37,7 @@ readonly ICON_NAV_RIGHT="→" # Navigation right
 
 # Spinner character helpers (ASCII by default, overridable via env)
 mo_spinner_chars() {
-    local chars="${MO_SPINNER_CHARS:-|/-\\}"
+    local chars="${FUB_SPINNER_CHARS:-|/-\\}"
     [[ -z "$chars" ]] && chars='|/-\\'
     printf "%s" "$chars"
 }
@@ -114,7 +114,7 @@ safe_remove() {
 }
 
 # Logging configuration
-readonly LOG_FILE="${HOME}/.config/mole/mole.log"
+readonly LOG_FILE="${HOME}/.config/fub/mole.log"
 readonly LOG_MAX_SIZE_DEFAULT=1048576 # 1MB
 
 # Ensure log directory exists
@@ -123,10 +123,10 @@ mkdir -p "$(dirname "$LOG_FILE")" 2> /dev/null || true
 # Log rotation check (called once at startup, not per log entry)
 rotate_log_once() {
     # Skip if already checked this session
-    [[ -n "${MOLE_LOG_ROTATED:-}" ]] && return 0
-    export MOLE_LOG_ROTATED=1
+    [[ -n "${FUB_LOG_ROTATED:-}" ]] && return 0
+    export FUB_LOG_ROTATED=1
 
-    local max_size="${MOLE_MAX_LOG_SIZE:-$LOG_MAX_SIZE_DEFAULT}"
+    local max_size="${FUB_MAX_LOG_SIZE:-$LOG_MAX_SIZE_DEFAULT}"
     if [[ -f "$LOG_FILE" ]] && [[ $(stat -f%z "$LOG_FILE" 2> /dev/null || echo 0) -gt "$max_size" ]]; then
         mv "$LOG_FILE" "${LOG_FILE}.old" 2> /dev/null || true
         touch "$LOG_FILE" 2> /dev/null || true
@@ -261,7 +261,7 @@ read_key() {
     fi
 
     # Raw typing mode (filter): map most keys to CHAR:<key>
-    if [[ "${MOLE_READ_KEY_FORCE_CHAR:-}" == "1" ]]; then
+    if [[ "${FUB_READ_KEY_FORCE_CHAR:-}" == "1" ]]; then
         if [[ -z "$key" ]]; then
             echo "ENTER"
             return 0
@@ -542,13 +542,13 @@ update_via_homebrew() {
     fi
 
     # Clear version check cache
-    rm -f "$HOME/.cache/mole/version_check" "$HOME/.cache/mole/update_message"
+    rm -f "$HOME/.cache/fub/version_check" "$HOME/.cache/fub/update_message"
     return 0
 }
 
 # Load basic configuration
 load_config() {
-    MOLE_MAX_LOG_SIZE="${MOLE_MAX_LOG_SIZE:-1048576}"
+    FUB_MAX_LOG_SIZE="${FUB_MAX_LOG_SIZE:-1048576}"
 }
 
 # Initialize configuration on sourcing
@@ -575,13 +575,13 @@ start_spinner() {
     (
         local delay=0.5
         while true; do
-            printf "\r${MOLE_SPINNER_PREFIX:-}${BLUE}|${NC} $message.  "
+            printf "\r${FUB_SPINNER_PREFIX:-}${BLUE}|${NC} $message.  "
             sleep $delay
-            printf "\r${MOLE_SPINNER_PREFIX:-}${BLUE}|${NC} $message.. "
+            printf "\r${FUB_SPINNER_PREFIX:-}${BLUE}|${NC} $message.. "
             sleep $delay
-            printf "\r${MOLE_SPINNER_PREFIX:-}${BLUE}|${NC} $message..."
+            printf "\r${FUB_SPINNER_PREFIX:-}${BLUE}|${NC} $message..."
             sleep $delay
-            printf "\r${MOLE_SPINNER_PREFIX:-}${BLUE}|${NC} $message    "
+            printf "\r${FUB_SPINNER_PREFIX:-}${BLUE}|${NC} $message    "
             sleep $delay
         done
     ) &
@@ -602,7 +602,7 @@ start_inline_spinner() {
             local i=0
             while true; do
                 local c="${chars:$((i % ${#chars})):1}"
-                printf "\r${MOLE_SPINNER_PREFIX:-}${BLUE}%s${NC} %s" "$c" "$message" 2> /dev/null || exit 0
+                printf "\r${FUB_SPINNER_PREFIX:-}${BLUE}%s${NC} %s" "$c" "$message" 2> /dev/null || exit 0
                 ((i++))
                 # macOS supports decimal sleep, this is the primary target
                 sleep 0.1 2> /dev/null || sleep 1 2> /dev/null || exit 0
@@ -639,7 +639,7 @@ stop_spinner() {
 
     if [[ -n "$result_message" ]]; then
         if [[ -t 1 ]]; then
-            printf "\r${MOLE_SPINNER_PREFIX:-}${GREEN}${ICON_SUCCESS}${NC} %s\n" "$result_message"
+            printf "\r${FUB_SPINNER_PREFIX:-}${GREEN}${ICON_SUCCESS}${NC} %s\n" "$result_message"
         else
             echo " ${ICON_SUCCESS} $result_message"
         fi
@@ -655,15 +655,15 @@ stop_spinner() {
 # ============================================================================
 
 # Global temp file tracking
-declare -a MOLE_TEMP_FILES=()
-declare -a MOLE_TEMP_DIRS=()
+declare -a FUB_TEMP_FILES=()
+declare -a FUB_TEMP_DIRS=()
 
 # Create tracked temporary file
 # Returns: temp file path
 create_temp_file() {
     local temp
     temp=$(mktemp) || return 1
-    MOLE_TEMP_FILES+=("$temp")
+    FUB_TEMP_FILES+=("$temp")
     echo "$temp"
 }
 
@@ -672,7 +672,7 @@ create_temp_file() {
 create_temp_dir() {
     local temp
     temp=$(mktemp -d) || return 1
-    MOLE_TEMP_DIRS+=("$temp")
+    FUB_TEMP_DIRS+=("$temp")
     echo "$temp"
 }
 
@@ -683,27 +683,27 @@ create_temp_file_named() {
     local suffix="${1:-}"
     local temp
     temp=$(mktemp "/tmp/mole_${suffix}_XXXXXX") || return 1
-    MOLE_TEMP_FILES+=("$temp")
+    FUB_TEMP_FILES+=("$temp")
     echo "$temp"
 }
 
 # Cleanup all tracked temp files
 cleanup_temp_files() {
     local file
-    if [[ ${#MOLE_TEMP_FILES[@]} -gt 0 ]]; then
-        for file in "${MOLE_TEMP_FILES[@]}"; do
+    if [[ ${#FUB_TEMP_FILES[@]} -gt 0 ]]; then
+        for file in "${FUB_TEMP_FILES[@]}"; do
             [[ -f "$file" ]] && rm -f "$file" 2> /dev/null || true
         done
     fi
 
-    if [[ ${#MOLE_TEMP_DIRS[@]} -gt 0 ]]; then
-        for file in "${MOLE_TEMP_DIRS[@]}"; do
+    if [[ ${#FUB_TEMP_DIRS[@]} -gt 0 ]]; then
+        for file in "${FUB_TEMP_DIRS[@]}"; do
             [[ -d "$file" ]] && rm -rf "$file" 2> /dev/null || true
         done
     fi
 
-    MOLE_TEMP_FILES=()
-    MOLE_TEMP_DIRS=()
+    FUB_TEMP_FILES=()
+    FUB_TEMP_DIRS=()
 }
 
 # Auto-cleanup on script exit (call this in main scripts)
@@ -754,11 +754,11 @@ parallel_execute() {
 # Lightweight spinner helper wrappers
 # ============================================================================
 # Usage: with_spinner "Message" cmd arg...
-# Set MOLE_SPINNER_PREFIX="  " for indented spinner (e.g., in clean context)
+# Set FUB_SPINNER_PREFIX="  " for indented spinner (e.g., in clean context)
 with_spinner() {
     local msg="$1"
     shift || true
-    local timeout="${MOLE_CMD_TIMEOUT:-180}" # Default 3min timeout
+    local timeout="${FUB_CMD_TIMEOUT:-180}" # Default 3min timeout
 
     if [[ -t 1 ]]; then
         start_inline_spinner "$msg"
@@ -813,7 +813,7 @@ clean_tool_cache() {
         echo -e "  ${YELLOW}→${NC} $label (would clean)"
         return 0
     fi
-    if MOLE_SPINNER_PREFIX="  " with_spinner "$label" "$@"; then
+    if FUB_SPINNER_PREFIX="  " with_spinner "$label" "$@"; then
         echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $label"
     else
         local exit_code=$?
@@ -899,8 +899,8 @@ print_space_stat() {
 # =========================================================================
 # mktemp unification wrappers (register access)
 # =========================================================================
-register_temp_file() { MOLE_TEMP_FILES+=("$1"); }
-register_temp_dir() { MOLE_TEMP_DIRS+=("$1"); }
+register_temp_file() { FUB_TEMP_FILES+=("$1"); }
+register_temp_dir() { FUB_TEMP_DIRS+=("$1"); }
 
 mktemp_file() {
     local f

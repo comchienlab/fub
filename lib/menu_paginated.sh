@@ -33,7 +33,7 @@ paginated_multi_select() {
     shift
     local -a items=("$@")
     local external_alt_screen=false
-    if [[ "${MOLE_MANAGED_ALT_SCREEN:-}" == "1" || "${MOLE_MANAGED_ALT_SCREEN:-}" == "true" ]]; then
+    if [[ "${FUB_MANAGED_ALT_SCREEN:-}" == "1" || "${FUB_MANAGED_ALT_SCREEN:-}" == "true" ]]; then
         external_alt_screen=true
     fi
 
@@ -49,7 +49,7 @@ paginated_multi_select() {
     local top_index=0
     local filter_query=""
     local filter_mode="false"                         # filter mode toggle
-    local sort_mode="${MOLE_MENU_SORT_DEFAULT:-date}" # date|name|size
+    local sort_mode="${FUB_MENU_SORT_DEFAULT:-date}" # date|name|size
     local sort_reverse="false"
     # Live query vs applied query
     local applied_query=""
@@ -61,12 +61,12 @@ paginated_multi_select() {
     local -a epochs=()
     local -a sizekb=()
     local has_metadata="false"
-    if [[ -n "${MOLE_MENU_META_EPOCHS:-}" ]]; then
-        while IFS= read -r v; do epochs+=("${v:-0}"); done < <(_pm_parse_csv_to_array "$MOLE_MENU_META_EPOCHS")
+    if [[ -n "${FUB_MENU_META_EPOCHS:-}" ]]; then
+        while IFS= read -r v; do epochs+=("${v:-0}"); done < <(_pm_parse_csv_to_array "$FUB_MENU_META_EPOCHS")
         has_metadata="true"
     fi
-    if [[ -n "${MOLE_MENU_META_SIZEKB:-}" ]]; then
-        while IFS= read -r v; do sizekb+=("${v:-0}"); done < <(_pm_parse_csv_to_array "$MOLE_MENU_META_SIZEKB")
+    if [[ -n "${FUB_MENU_META_SIZEKB:-}" ]]; then
+        while IFS= read -r v; do sizekb+=("${v:-0}"); done < <(_pm_parse_csv_to_array "$FUB_MENU_META_SIZEKB")
         has_metadata="true"
     fi
 
@@ -121,8 +121,8 @@ paginated_multi_select() {
         selected[i]=false
     done
 
-    if [[ -n "${MOLE_PRESELECTED_INDICES:-}" ]]; then
-        local cleaned_preselect="${MOLE_PRESELECTED_INDICES//[[:space:]]/}"
+    if [[ -n "${FUB_PRESELECTED_INDICES:-}" ]]; then
+        local cleaned_preselect="${FUB_PRESELECTED_INDICES//[[:space:]]/}"
         local -a initial_indices=()
         IFS=',' read -ra initial_indices <<< "$cleaned_preselect"
         for idx in "${initial_indices[@]}"; do
@@ -154,7 +154,7 @@ paginated_multi_select() {
     cleanup() {
         trap - EXIT INT TERM
         restore_terminal
-        unset MOLE_READ_KEY_FORCE_CHAR
+        unset FUB_READ_KEY_FORCE_CHAR
     }
 
     # Interrupt handler
@@ -488,7 +488,7 @@ paginated_multi_select() {
             "QUIT")
                 if [[ "$filter_mode" == "true" ]]; then
                     filter_mode="false"
-                    unset MOLE_READ_KEY_FORCE_CHAR
+                    unset FUB_READ_KEY_FORCE_CHAR
                     filter_query=""
                     applied_query=""
                     top_index=0
@@ -570,7 +570,7 @@ paginated_multi_select() {
             "FILTER")
                 # Trigger filter mode with /
                 filter_mode="true"
-                export MOLE_READ_KEY_FORCE_CHAR=1
+                export FUB_READ_KEY_FORCE_CHAR=1
                 filter_query=""
                 top_index=0
                 cursor_pos=0
@@ -617,7 +617,7 @@ paginated_multi_select() {
                 if [[ "$filter_mode" == "true" ]]; then
                     applied_query="$filter_query"
                     filter_mode="false"
-                    unset MOLE_READ_KEY_FORCE_CHAR
+                    unset FUB_READ_KEY_FORCE_CHAR
                     top_index=0
                     cursor_pos=0
 
@@ -663,7 +663,7 @@ paginated_multi_select() {
                 fi
 
                 trap - EXIT INT TERM
-                MOLE_SELECTION_RESULT="$final_result"
+                FUB_SELECTION_RESULT="$final_result"
                 restore_terminal
                 return 0
                 ;;

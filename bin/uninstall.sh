@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mole - Uninstall Module
+# Fub - Uninstall Module
 # Interactive application uninstaller with keyboard navigation
 #
 # Usage:
@@ -101,7 +101,7 @@ format_last_used_summary() {
 # Scan applications and collect information
 scan_applications() {
     # Simplified cache: only check timestamp (24h TTL)
-    local cache_dir="$HOME/.cache/mole"
+    local cache_dir="$HOME/.cache/fub"
     local cache_file="$cache_dir/app_scan_cache"
     local cache_ttl=86400 # 24 hours
 
@@ -229,7 +229,7 @@ scan_applications() {
     fi
     local pids=()
     local inline_loading=false
-    if [[ "${MOLE_INLINE_LOADING:-}" == "1" || "${MOLE_INLINE_LOADING:-}" == "true" ]]; then
+    if [[ "${FUB_INLINE_LOADING:-}" == "1" || "${FUB_INLINE_LOADING:-}" == "true" ]]; then
         inline_loading=true
         printf "\033[H" >&2 # Position cursor at top of screen
     fi
@@ -597,9 +597,9 @@ uninstall_applications() {
 # Cleanup function - restore cursor and clean up
 cleanup() {
     # Restore cursor using common function
-    if [[ "${MOLE_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
+    if [[ "${FUB_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
         leave_alt_screen
-        unset MOLE_ALT_SCREEN_ACTIVE
+        unset FUB_ALT_SCREEN_ACTIVE
     fi
     if [[ -n "${sudo_keepalive_pid:-}" ]]; then
         kill "$sudo_keepalive_pid" 2> /dev/null || true
@@ -626,7 +626,7 @@ main() {
     # Simplified: always check if we need alt screen for scanning
     # (scan_applications handles cache internally)
     local needs_scanning=true
-    local cache_file="$HOME/.cache/mole/app_scan_cache"
+    local cache_file="$HOME/.cache/fub/app_scan_cache"
     if [[ -f "$cache_file" ]]; then
         local cache_age=$(($(date +%s) - $(stat -f%m "$cache_file" 2> /dev/null || echo 86401)))
         [[ $cache_age -lt 86400 ]] && needs_scanning=false
@@ -635,46 +635,46 @@ main() {
     # Only enter alt screen if we need scanning (shows progress)
     if [[ $needs_scanning == true && $use_inline_loading == true ]]; then
         enter_alt_screen
-        export MOLE_ALT_SCREEN_ACTIVE=1
-        export MOLE_INLINE_LOADING=1
-        export MOLE_MANAGED_ALT_SCREEN=1
+        export FUB_ALT_SCREEN_ACTIVE=1
+        export FUB_INLINE_LOADING=1
+        export FUB_MANAGED_ALT_SCREEN=1
         printf "\033[2J\033[H" >&2
     else
-        unset MOLE_INLINE_LOADING MOLE_MANAGED_ALT_SCREEN MOLE_ALT_SCREEN_ACTIVE
+        unset FUB_INLINE_LOADING FUB_MANAGED_ALT_SCREEN FUB_ALT_SCREEN_ACTIVE
     fi
 
     # Scan applications
     local apps_file=""
     if ! apps_file=$(scan_applications); then
-        if [[ "${MOLE_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
+        if [[ "${FUB_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
             printf "\033[2J\033[H" >&2
             leave_alt_screen
-            unset MOLE_ALT_SCREEN_ACTIVE
-            unset MOLE_INLINE_LOADING MOLE_MANAGED_ALT_SCREEN
+            unset FUB_ALT_SCREEN_ACTIVE
+            unset FUB_INLINE_LOADING FUB_MANAGED_ALT_SCREEN
         fi
         return 1
     fi
 
-    if [[ "${MOLE_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
+    if [[ "${FUB_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
         printf "\033[2J\033[H" >&2
     fi
 
     if [[ ! -f "$apps_file" ]]; then
         # Error message already shown by scan_applications
-        if [[ "${MOLE_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
+        if [[ "${FUB_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
             leave_alt_screen
-            unset MOLE_ALT_SCREEN_ACTIVE
-            unset MOLE_INLINE_LOADING MOLE_MANAGED_ALT_SCREEN
+            unset FUB_ALT_SCREEN_ACTIVE
+            unset FUB_INLINE_LOADING FUB_MANAGED_ALT_SCREEN
         fi
         return 1
     fi
 
     # Load applications
     if ! load_applications "$apps_file"; then
-        if [[ "${MOLE_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
+        if [[ "${FUB_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
             leave_alt_screen
-            unset MOLE_ALT_SCREEN_ACTIVE
-            unset MOLE_INLINE_LOADING MOLE_MANAGED_ALT_SCREEN
+            unset FUB_ALT_SCREEN_ACTIVE
+            unset FUB_INLINE_LOADING FUB_MANAGED_ALT_SCREEN
         fi
         rm -f "$apps_file"
         return 1
@@ -682,19 +682,19 @@ main() {
 
     # Interactive selection using paginated menu
     if ! select_apps_for_uninstall; then
-        if [[ "${MOLE_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
+        if [[ "${FUB_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
             leave_alt_screen
-            unset MOLE_ALT_SCREEN_ACTIVE
-            unset MOLE_INLINE_LOADING MOLE_MANAGED_ALT_SCREEN
+            unset FUB_ALT_SCREEN_ACTIVE
+            unset FUB_INLINE_LOADING FUB_MANAGED_ALT_SCREEN
         fi
         rm -f "$apps_file"
         return 0
     fi
 
-    if [[ "${MOLE_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
+    if [[ "${FUB_ALT_SCREEN_ACTIVE:-}" == "1" ]]; then
         leave_alt_screen
-        unset MOLE_ALT_SCREEN_ACTIVE
-        unset MOLE_INLINE_LOADING MOLE_MANAGED_ALT_SCREEN
+        unset FUB_ALT_SCREEN_ACTIVE
+        unset FUB_INLINE_LOADING FUB_MANAGED_ALT_SCREEN
     fi
 
     # Restore cursor and show a concise summary before confirmation

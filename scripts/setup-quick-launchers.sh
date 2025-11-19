@@ -1,5 +1,5 @@
 #!/bin/bash
-# Create Raycast script commands and Alfred keywords for Mole (clean + uninstall).
+# Create Raycast script commands and Alfred keywords for Fub (clean + uninstall).
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ detect_mo() {
     elif command -v mole > /dev/null 2>&1; then
         command -v mole
     else
-        log_error "Mole not found. Install it first via Homebrew or ./install.sh."
+        log_error "Fub not found. Install it first via Homebrew or ./install.sh."
         exit 1
     fi
 }
@@ -84,8 +84,8 @@ launcher_available() {
 }
 
 detect_launcher_app() {
-    if [[ -n "\${MO_LAUNCHER_APP:-}" ]]; then
-        echo "\${MO_LAUNCHER_APP}"
+    if [[ -n "\${FUB_LAUNCHER_APP:-}" ]]; then
+        echo "\${FUB_LAUNCHER_APP}"
         return
     fi
     local candidates=(Warp Ghostty Alacritty Kitty WezTerm WindTerm Hyper iTerm2 iTerm Terminal)
@@ -282,10 +282,10 @@ create_alfred_workflow() {
 
     log_step "Installing Alfred workflows..."
     local workflows=(
-        "fun.tw93.mole.clean|Mole clean|clean|Run Mole clean|\"${mo_bin}\" clean"
-        "fun.tw93.mole.uninstall|Mole uninstall|uninstall|Uninstall apps via Mole|\"${mo_bin}\" uninstall"
-        "fun.tw93.mole.optimize|Mole optimize|optimize|System health & optimization|\"${mo_bin}\" optimize"
-        "fun.tw93.mole.analyze|Mole analyze|analyze|Disk space analysis|\"${mo_bin}\" analyze"
+        "fun.tw93.mole.clean|Fub clean|clean|Run Fub clean|\"${mo_bin}\" clean"
+        "fun.tw93.mole.uninstall|Fub uninstall|uninstall|Uninstall apps via Mole|\"${mo_bin}\" uninstall"
+        "fun.tw93.mole.optimize|Fub optimize|optimize|System health & optimization|\"${mo_bin}\" optimize"
+        "fun.tw93.mole.analyze|Fub analyze|analyze|Disk space analysis|\"${mo_bin}\" analyze"
     )
 
     for entry in "${workflows[@]}"; do
@@ -389,12 +389,12 @@ EOF
 main() {
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Mole Quick Launchers"
+    echo "  Fub Quick Launchers"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     local mo_bin
     mo_bin="$(detect_mo)"
-    log_step "Detected Mole binary at: ${mo_bin}"
+    log_step "Detected Fub binary at: ${mo_bin}"
 
     create_raycast_commands "$mo_bin"
     create_alfred_workflow "$mo_bin"

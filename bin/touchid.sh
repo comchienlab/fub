@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mole - Touch ID Configuration Helper
+# Fub - Touch ID Configuration Helper
 # Automatically configure Touch ID for sudo
 
 set -euo pipefail
@@ -76,7 +76,7 @@ enable_touchid() {
     fi
 
     # Create backup and apply changes
-    if ! sudo cp "$PAM_SUDO_FILE" "${PAM_SUDO_FILE}.mole-backup" 2> /dev/null; then
+    if ! sudo cp "$PAM_SUDO_FILE" "${PAM_SUDO_FILE}.fub-backup" 2> /dev/null; then
         log_error "Failed to create backup"
         return 1
     fi
@@ -116,7 +116,7 @@ disable_touchid() {
     fi
 
     # Create backup and remove configuration
-    if ! sudo cp "$PAM_SUDO_FILE" "${PAM_SUDO_FILE}.mole-backup" 2> /dev/null; then
+    if ! sudo cp "$PAM_SUDO_FILE" "${PAM_SUDO_FILE}.fub-backup" 2> /dev/null; then
         log_error "Failed to create backup"
         return 1
     fi

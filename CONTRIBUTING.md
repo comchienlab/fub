@@ -1,4 +1,4 @@
-# Contributing to Mole
+# Contributing to Fub
 
 ## Setup
 

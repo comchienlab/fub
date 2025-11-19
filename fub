@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mole - Main Entry Point
+# Fub - Main Entry Point
 # A comprehensive macOS maintenance tool
 #
 # Clean - Remove junk files and optimize system
@@ -7,11 +7,11 @@
 # Analyze - Interactive disk space explorer
 #
 # Usage:
-#   ./mole                         # Interactive main menu
-#   ./mole clean                   # Direct clean mode
-#   ./mole uninstall               # Direct uninstall mode
-#   ./mole analyze                 # Disk space explorer
-#   ./mole --help                  # Show help
+#   ./fub                          # Interactive main menu
+#   ./fub clean                    # Direct clean mode
+#   ./fub uninstall                # Direct uninstall mode
+#   ./fub analyze                  # Disk space explorer
+#   ./fub --help                   # Show help
 
 set -euo pipefail
 
@@ -23,20 +23,20 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 # Version info
 VERSION="1.9.15"
-MOLE_TAGLINE="can dig deep to clean your Mac."
+FUB_TAGLINE="can dig deep to clean your Mac."
 
 # Get latest version from remote repository
 get_latest_version() {
     curl -fsSL --connect-timeout 2 --max-time 3 -H "Cache-Control: no-cache" \
-        "https://raw.githubusercontent.com/tw93/mole/main/mole" 2> /dev/null |
+        "https://raw.githubusercontent.com/tw93/fub/main/fub" 2> /dev/null |
         grep '^VERSION=' | head -1 | sed 's/VERSION="\(.*\)"/\1/'
 }
 
 # Check for updates (non-blocking, cached)
 check_for_updates() {
-    local cache="$HOME/.cache/mole/version_check"
-    local msg_cache="$HOME/.cache/mole/update_message"
-    local ttl="${MO_UPDATE_CHECK_TTL:-3600}"
+    local cache="$HOME/.cache/fub/version_check"
+    local msg_cache="$HOME/.cache/fub/update_message"
+    local ttl="${FUB_UPDATE_CHECK_TTL:-3600}"
     mkdir -p "$(dirname "$cache")" 2> /dev/null
 
     # Skip if checked recently
@@ -51,7 +51,7 @@ check_for_updates() {
         latest=$(get_latest_version)
 
         if [[ -n "$latest" && "$VERSION" != "$latest" && "$(printf '%s\n' "$VERSION" "$latest" | sort -V | head -1)" == "$VERSION" ]]; then
-            printf "\nUpdate available: %s → %s, run %smo update%s\n\n" "$VERSION" "$latest" "$GREEN" "$NC" > "$msg_cache"
+            printf "\nUpdate available: %s → %s, run %sfub update%s\n\n" "$VERSION" "$latest" "$GREEN" "$NC" > "$msg_cache"
         else
             echo -n > "$msg_cache"
         fi
@@ -62,7 +62,7 @@ check_for_updates() {
 
 # Show update notification if available
 show_update_notification() {
-    local msg_cache="$HOME/.cache/mole/update_message"
+    local msg_cache="$HOME/.cache/fub/update_message"
     if [[ -f "$msg_cache" && -s "$msg_cache" ]]; then
         cat "$msg_cache"
         echo
@@ -71,16 +71,17 @@ show_update_notification() {
 
 show_brand_banner() {
     cat << EOF
-${GREEN} __  __       _      ${NC}
-${GREEN}|  \/  | ___ | | ___ ${NC}
-${GREEN}| |\/| |/ _ \| |/ _ \\${NC}
-${GREEN}| |  | | (_) | |  __/${NC}  ${BLUE}https://github.com/tw93/mole${NC}
-${GREEN}|_|  |_|\___/|_|\___|${NC}  ${GREEN}${MOLE_TAGLINE}${NC}
+${GREEN} _____     _     ${NC}
+${GREEN}|  ___|   | |    ${NC}
+${GREEN}| |_ _   _| |__  ${NC}
+${GREEN}|  _| | | | '_ \ ${NC}  ${BLUE}https://github.com/tw93/fub${NC}
+${GREEN}| | | |_| | |_) |${NC}  ${GREEN}${FUB_TAGLINE}${NC}
+${GREEN}\_|  \__,_|_.__/ ${NC}
 
 EOF
 }
 
-animate_mole_intro() {
+animate_fub_intro() {
     # Skip animation if stdout isn't a TTY (non-interactive)
     if [[ ! -t 1 ]]; then
         return
@@ -90,9 +91,9 @@ animate_mole_intro() {
     printf '\n'
     hide_cursor
 
-    local -a mole_lines=()
+    local -a fub_lines=()
     while IFS= read -r line; do
-        mole_lines+=("$line")
+        fub_lines+=("$line")
     done << 'EOF'
         /\_/\
    ____/ o o \
@@ -107,11 +108,11 @@ EOF
     local body_cutoff=4
     local body_color="${PURPLE}"
     local ground_color="${GREEN}"
-    for idx in "${!mole_lines[@]}"; do
+    for idx in "${!fub_lines[@]}"; do
         if ((idx < body_cutoff)); then
-            printf "%s\n" "${body_color}${mole_lines[$idx]}${NC}"
+            printf "%s\n" "${body_color}${fub_lines[$idx]}${NC}"
         else
-            printf "%s\n" "${ground_color}${mole_lines[$idx]}${NC}"
+            printf "%s\n" "${ground_color}${fub_lines[$idx]}${NC}"
         fi
         sleep 0.1
     done
@@ -124,34 +125,34 @@ EOF
 }
 
 show_version() {
-    printf '\nMole version %s\n\n' "$VERSION"
+    printf '\nFub version %s\n\n' "$VERSION"
 }
 
 show_help() {
     show_brand_banner
     echo
     printf "%s%s%s\n" "$BLUE" "COMMANDS" "$NC"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo" "$NC" "Interactive main menu"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo clean" "$NC" "Deeper system cleanup"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo clean --dry-run" "$NC" "Preview cleanup (no deletions)"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo clean --whitelist" "$NC" "Manage protected caches"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo uninstall" "$NC" "Remove applications completely"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo optimize" "$NC" "System health check & optimization"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo analyze" "$NC" "Interactive disk space explorer"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo touchid" "$NC" "Configure Touch ID for sudo"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo update" "$NC" "Update Mole to the latest version"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo remove" "$NC" "Remove Mole from the system"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo --version" "$NC" "Show installed version"
-    printf "  %s%-28s%s %s\n" "$GREEN" "mo --help" "$NC" "Show this help message"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub" "$NC" "Interactive main menu"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub clean" "$NC" "Deeper system cleanup"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub clean --dry-run" "$NC" "Preview cleanup (no deletions)"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub clean --whitelist" "$NC" "Manage protected caches"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub uninstall" "$NC" "Remove applications completely"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub optimize" "$NC" "System health check & optimization"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub analyze" "$NC" "Interactive disk space explorer"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub touchid" "$NC" "Configure Touch ID for sudo"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub update" "$NC" "Update Fub to the latest version"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub remove" "$NC" "Remove Fub from the system"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub --version" "$NC" "Show installed version"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub --help" "$NC" "Show this help message"
 
     printf "\n%s%s%s\n" "$BLUE" "MORE" "$NC"
-    printf "  https://github.com/tw93/mole\n\n"
+    printf "  https://github.com/tw93/fub\n\n"
 }
 
 # Simple update function
-update_mole() {
+update_fub() {
     # Check if installed via Homebrew
-    if command -v brew > /dev/null 2>&1 && brew list mole > /dev/null 2>&1; then
+    if command -v brew > /dev/null 2>&1 && brew list fub > /dev/null 2>&1; then
         update_via_homebrew "$VERSION"
         exit 0
     fi
@@ -179,7 +180,7 @@ update_mole() {
         echo "Downloading latest version..."
     fi
 
-    local installer_url="https://raw.githubusercontent.com/tw93/mole/main/install.sh"
+    local installer_url="https://raw.githubusercontent.com/tw93/fub/main/install.sh"
     local tmp_installer
     tmp_installer="$(mktemp_file)" || {
         log_error "Update failed"
@@ -212,10 +213,10 @@ update_mole() {
     chmod +x "$tmp_installer"
 
     # Determine install directory
-    local mole_path
-    mole_path="$(command -v mole 2> /dev/null || echo "$0")"
+    local fub_path
+    fub_path="$(command -v fub 2> /dev/null || echo "$0")"
     local install_dir
-    install_dir="$(cd "$(dirname "$mole_path")" && pwd)"
+    install_dir="$(cd "$(dirname "$fub_path")" && pwd)"
 
     if [[ -t 1 ]]; then
         start_inline_spinner "Installing update..."
@@ -237,7 +238,7 @@ update_mole() {
         # Only show success message if installer didn't already do so
         if ! printf '%s\n' "$output" | grep -Eq "Updated to latest version|Already on latest version"; then
             local new_version
-            new_version=$("$mole_path" --version 2> /dev/null | awk 'NF {print $NF}' || echo "")
+            new_version=$("$fub_path" --version 2> /dev/null | awk 'NF {print $NF}' || echo "")
             printf '\n%s\n\n' "${GREEN}${ICON_SUCCESS}${NC} Updated to latest version (${new_version:-unknown})"
         else
             printf '\n'
@@ -246,11 +247,11 @@ update_mole() {
 
     # Run installer with visible output (but capture for error handling)
     local install_output
-    if install_output=$("$tmp_installer" --prefix "$install_dir" --config "$HOME/.config/mole" --update 2>&1); then
+    if install_output=$("$tmp_installer" --prefix "$install_dir" --config "$HOME/.config/fub" --update 2>&1); then
         process_install_output "$install_output"
     else
         # Retry without --update flag
-        if install_output=$("$tmp_installer" --prefix "$install_dir" --config "$HOME/.config/mole" 2>&1); then
+        if install_output=$("$tmp_installer" --prefix "$install_dir" --config "$HOME/.config/fub" 2>&1); then
             process_install_output "$install_output"
         else
             if [[ -t 1 ]]; then stop_inline_spinner; fi
@@ -262,14 +263,14 @@ update_mole() {
     fi
 
     rm -f "$tmp_installer"
-    rm -f "$HOME/.cache/mole/version_check" "$HOME/.cache/mole/update_message"
+    rm -f "$HOME/.cache/fub/version_check" "$HOME/.cache/fub/update_message"
 }
 
 # Remove Mole from system
-remove_mole() {
+remove_fub() {
     # Detect all installations with loading
     if [[ -t 1 ]]; then
-        start_inline_spinner "Detecting Mole installations..."
+        start_inline_spinner "Detecting Fub installations..."
     else
         echo "Detecting installations..."
     fi
@@ -279,52 +280,52 @@ remove_mole() {
     local -a alias_installs=()
 
     # Check Homebrew
-    if command -v brew > /dev/null 2>&1 && brew list mole > /dev/null 2>&1; then
+    if command -v brew > /dev/null 2>&1 && brew list fub > /dev/null 2>&1; then
         is_homebrew=true
     fi
 
-    # Find mole installations using which/command
-    local found_mole
-    found_mole=$(command -v mole 2> /dev/null || true)
-    if [[ -n "$found_mole" && -f "$found_mole" ]]; then
+    # Find fub installations using which/command
+    local found_fub
+    found_fub=$(command -v fub 2> /dev/null || true)
+    if [[ -n "$found_fub" && -f "$found_fub" ]]; then
         # Check if it's not a Homebrew symlink
-        if [[ ! -L "$found_mole" ]] || ! readlink "$found_mole" | grep -q "Cellar/mole"; then
-            manual_installs+=("$found_mole")
+        if [[ ! -L "$found_fub" ]] || ! readlink "$found_fub" | grep -q "Cellar/fub"; then
+            manual_installs+=("$found_fub")
         fi
     fi
 
     # Also check common locations as fallback
     local -a fallback_paths=(
-        "/usr/local/bin/mole"
-        "$HOME/.local/bin/mole"
-        "/opt/local/bin/mole"
+        "/usr/local/bin/fub"
+        "$HOME/.local/bin/fub"
+        "/opt/local/bin/fub"
     )
 
     for path in "${fallback_paths[@]}"; do
-        if [[ -f "$path" && "$path" != "$found_mole" ]]; then
+        if [[ -f "$path" && "$path" != "$found_fub" ]]; then
             # Check if it's not a Homebrew symlink
-            if [[ ! -L "$path" ]] || ! readlink "$path" | grep -q "Cellar/mole"; then
+            if [[ ! -L "$path" ]] || ! readlink "$path" | grep -q "Cellar/fub"; then
                 manual_installs+=("$path")
             fi
         fi
     done
 
-    # Find mo alias
-    local found_mo
-    found_mo=$(command -v mo 2> /dev/null || true)
-    if [[ -n "$found_mo" && -f "$found_mo" ]]; then
-        alias_installs+=("$found_mo")
+    # Find fb alias
+    local found_fb
+    found_fb=$(command -v fb 2> /dev/null || true)
+    if [[ -n "$found_fb" && -f "$found_fb" ]]; then
+        alias_installs+=("$found_fb")
     fi
 
-    # Also check common locations for mo
+    # Also check common locations for fb
     local -a alias_fallback=(
-        "/usr/local/bin/mo"
-        "$HOME/.local/bin/mo"
-        "/opt/local/bin/mo"
+        "/usr/local/bin/fb"
+        "$HOME/.local/bin/fb"
+        "/opt/local/bin/fb"
     )
 
     for alias in "${alias_fallback[@]}"; do
-        if [[ -f "$alias" && "$alias" != "$found_mo" ]]; then
+        if [[ -f "$alias" && "$alias" != "$found_fb" ]]; then
             alias_installs+=("$alias")
         fi
     done
@@ -339,20 +340,20 @@ remove_mole() {
     local manual_count=${#manual_installs[@]}
     local alias_count=${#alias_installs[@]}
     if [[ "$is_homebrew" == "false" && ${manual_count:-0} -eq 0 && ${alias_count:-0} -eq 0 ]]; then
-        printf '%s\n\n' "${YELLOW}No Mole installation detected${NC}"
+        printf '%s\n\n' "${YELLOW}No Fub installation detected${NC}"
         exit 0
     fi
 
     # Show what will be removed
-    echo -e "${YELLOW}Remove Mole${NC} - will delete the following:"
+    echo -e "${YELLOW}Remove Fub${NC} - will delete the following:"
     if [[ "$is_homebrew" == "true" ]]; then
-        echo "  - Mole via Homebrew"
+        echo "  - Fub via Homebrew"
     fi
     for install in ${manual_installs[@]+"${manual_installs[@]}"} ${alias_installs[@]+"${alias_installs[@]}"}; do
         echo "  - $install"
     done
-    echo "  - ~/.config/mole"
-    echo "  - ~/.cache/mole"
+    echo "  - ~/.config/fub"
+    echo "  - ~/.cache/fub"
     echo -ne "${PURPLE}${ICON_ARROW}${NC} Press ${GREEN}Enter${NC} to confirm, ${GRAY}ESC${NC} to cancel: "
 
     # Read single key
@@ -378,7 +379,7 @@ remove_mole() {
     # Remove Homebrew installation (silent)
     local has_error=false
     if [[ "$is_homebrew" == "true" ]]; then
-        if ! brew uninstall mole > /dev/null 2>&1; then
+        if ! brew uninstall fub > /dev/null 2>&1; then
             has_error=true
         fi
     fi
@@ -414,20 +415,20 @@ remove_mole() {
         done
     fi
     # Clean up cache first (silent)
-    if [[ -d "$HOME/.cache/mole" ]]; then
-        rm -rf "$HOME/.cache/mole" 2> /dev/null || true
+    if [[ -d "$HOME/.cache/fub" ]]; then
+        rm -rf "$HOME/.cache/fub" 2> /dev/null || true
     fi
     # Clean up configuration last (silent)
-    if [[ -d "$HOME/.config/mole" ]]; then
-        rm -rf "$HOME/.config/mole" 2> /dev/null || true
+    if [[ -d "$HOME/.config/fub" ]]; then
+        rm -rf "$HOME/.config/fub" 2> /dev/null || true
     fi
 
     # Show final result
     local final_message
     if [[ "$has_error" == "true" ]]; then
-        final_message="${YELLOW}${ICON_ERROR} Mole uninstalled with some errors, thank you for using Mole!${NC}"
+        final_message="${YELLOW}${ICON_ERROR} Fub uninstalled with some errors, thank you for using Fub!${NC}"
     else
-        final_message="${GREEN}${ICON_SUCCESS} Mole uninstalled successfully, thank you for using Mole!${NC}"
+        final_message="${GREEN}${ICON_SUCCESS} Fub uninstalled successfully, thank you for using Fub!${NC}"
     fi
     printf '\n%s\n\n' "$final_message"
 
@@ -491,11 +492,11 @@ interactive_main_menu() {
         tty_name=$(tty 2> /dev/null || echo "")
         if [[ -n "$tty_name" ]]; then
             local flag_file
-            local cache_dir="$HOME/.cache/mole"
+            local cache_dir="$HOME/.cache/fub"
             mkdir -p "$cache_dir" 2> /dev/null
             flag_file="$cache_dir/intro_$(echo "$tty_name" | tr -c '[:alnum:]_' '_')"
             if [[ ! -f "$flag_file" ]]; then
-                animate_mole_intro
+                animate_fub_intro
                 touch "$flag_file" 2> /dev/null || true
             fi
         fi
@@ -503,7 +504,7 @@ interactive_main_menu() {
     local current_option=1
     local first_draw=true
     local brand_banner=""
-    local msg_cache="$HOME/.cache/mole/update_message"
+    local msg_cache="$HOME/.cache/fub/update_message"
     local update_message=""
 
     brand_banner="$(show_brand_banner)"
@@ -593,11 +594,11 @@ main() {
             exec "$SCRIPT_DIR/bin/touchid.sh" "${@:2}"
             ;;
         "update")
-            update_mole
+            update_fub
             exit 0
             ;;
         "remove")
-            remove_mole
+            remove_fub
             exit 0
             ;;
         "help" | "--help" | "-h")
@@ -614,7 +615,7 @@ main() {
             ;;
         *)
             echo "Unknown command: $1"
-            echo "Use 'mole --help' for usage information."
+            echo "Use 'fub --help' for usage information."
             exit 1
             ;;
     esac

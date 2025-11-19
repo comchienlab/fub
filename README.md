@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>Mole</h1>
+  <h1>Fub</h1>
   <p><em>Dig deep like a mole to clean your Mac.</em></p>
 </div>
 
@@ -13,8 +13,8 @@
 </p>
 
 <p align="center">
-  <img src="https://cdn.tw93.fun/img/mole.jpeg" alt="Mole - 95.50GB freed" width="800" />
-  <p align="center">由于 Mole 还在中级版本，如果这台 Mac 对你非常重要，建议再等等。</p>
+  <img src="https://cdn.tw93.fun/img/mole.jpeg" alt="Fub - 95.50GB freed" width="800" />
+  <p align="center">由于 Fub 还在中级版本，如果这台 Mac 对你非常重要，建议再等等。</p>
 </p>
 
 ## Features
@@ -51,8 +51,8 @@ mo optimize             # System optimization
 mo analyze              # Disk analyzer
 
 mo touchid              # Configure Touch ID for sudo
-mo update               # Update Mole
-mo remove               # Remove Mole from system
+mo update               # Update Fub
+mo remove               # Remove Fub from system
 mo --help               # Show help
 mo --version            # Show installed version
 
@@ -60,7 +60,7 @@ mo --version            # Show installed version
 
 ## Tips
 
-- Safety first, if your Mac is mission-critical, wait for Mole to mature before full cleanups.
+- Safety first, if your Mac is mission-critical, wait for Fub to mature before full cleanups.
 - Preview the cleanup by running `mo clean --dry-run` and reviewing the generated list.
 - Use `mo clean --whitelist` to manage protected caches.
 - Use `mo touchid` to approve sudo with Touch ID instead of typing your password.
@@ -147,21 +147,21 @@ Analyze Disk  ~/Documents  |  Total: 156.8GB
 
 ## Quick Launchers
 
-Launch Mole commands instantly from Raycast or Alfred:
+Launch Fub commands instantly from Raycast or Alfred:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tw93/Mole/main/scripts/setup-quick-launchers.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tw93/Fub/main/scripts/setup-quick-launchers.sh | bash
 ```
 
 Adds 4 commands: `clean`, `uninstall`, `optimize`, `analyze`. Auto-detects your terminal or set `MO_LAUNCHER_APP=<name>` to override.
 
 ## Support
 
-<a href="https://miaoyan.app/cats.html?name=Mole"><img src="https://miaoyan.app/assets/sponsors.svg" width="1000px" /></a>
+<a href="https://miaoyan.app/cats.html?name=Fub"><img src="https://miaoyan.app/assets/sponsors.svg" width="1000px" /></a>
 
-- If Mole reclaimed storage for you, consider starring the repo or sharing it with friends needing a cleaner Mac.
-- Have ideas or fixes? Open an issue or PR and help shape Mole's roadmap together with the community.
-- Love cats? Treat Tangyuan and Cola to canned food via <a href="https://miaoyan.app/cats.html?name=Mole" target="_blank">this link</a> and keep the mascots purring.
+- If Fub reclaimed storage for you, consider starring the repo or sharing it with friends needing a cleaner Mac.
+- Have ideas or fixes? Open an issue or PR and help shape Fub's roadmap together with the community.
+- Love cats? Treat Tangyuan and Cola to canned food via <a href="https://miaoyan.app/cats.html?name=Fub" target="_blank">this link</a> and keep the mascots purring.
 
 ## License
 

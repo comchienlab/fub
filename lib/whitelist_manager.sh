@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/common.sh"
 source "$SCRIPT_DIR/menu_simple.sh"
 
 # Config file path
-WHITELIST_CONFIG="$HOME/.config/mole/whitelist"
+WHITELIST_CONFIG="$HOME/.config/fub/whitelist"
 
 # Default whitelist patterns (preselected on first run)
 declare -a DEFAULT_WHITELIST_PATTERNS=(
@@ -30,7 +30,7 @@ save_whitelist_patterns() {
     mkdir -p "$(dirname "$WHITELIST_CONFIG")"
 
     cat > "$WHITELIST_CONFIG" << 'EOF'
-# Mole Whitelist - Protected paths won't be deleted
+# Fub Whitelist - Protected paths won't be deleted
 # Default protections: Playwright browsers, HuggingFace models, Maven repo, Ollama models, Surge Mac, Finder metadata
 # Add one pattern per line to keep items safe.
 EOF
@@ -266,14 +266,14 @@ manage_whitelist_categories() {
             preselected_indices+=("$i")
         done
         local IFS=','
-        export MOLE_PRESELECTED_INDICES="${preselected_indices[*]}"
+        export FUB_PRESELECTED_INDICES="${preselected_indices[*]}"
     else
-        unset MOLE_PRESELECTED_INDICES
+        unset FUB_PRESELECTED_INDICES
     fi
 
-    MOLE_SELECTION_RESULT=""
+    FUB_SELECTION_RESULT=""
     paginated_multi_select "Whitelist Manager – Select caches to protect" "${menu_options[@]}"
-    unset MOLE_PRESELECTED_INDICES
+    unset FUB_PRESELECTED_INDICES
     local exit_code=$?
 
     if [[ $exit_code -ne 0 ]]; then
@@ -284,9 +284,9 @@ manage_whitelist_categories() {
 
     # Convert selected indices to patterns
     local -a selected_patterns=()
-    if [[ -n "$MOLE_SELECTION_RESULT" ]]; then
+    if [[ -n "$FUB_SELECTION_RESULT" ]]; then
         local -a selected_indices
-        IFS=',' read -ra selected_indices <<< "$MOLE_SELECTION_RESULT"
+        IFS=',' read -ra selected_indices <<< "$FUB_SELECTION_RESULT"
         for idx in "${selected_indices[@]}"; do
             if [[ $idx -ge 0 && $idx -lt ${#cache_patterns[@]} ]]; then
                 local pattern="${cache_patterns[$idx]}"
