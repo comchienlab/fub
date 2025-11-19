@@ -69,7 +69,7 @@ validate_path_for_deletion() {
 
     # Check path isn't critical system directory
     case "$path" in
-        / | /bin | /sbin | /usr | /usr/bin | /usr/sbin | /etc | /var | /System | /Library/Extensions)
+        / | /bin | /sbin | /usr | /usr/bin | /usr/sbin | /etc | /var | /lib | /lib64 | /boot | /sys | /proc)
             log_error "Path validation failed: critical system directory: $path"
             return 1
             ;;
@@ -127,7 +127,7 @@ rotate_log_once() {
     export FUB_LOG_ROTATED=1
 
     local max_size="${FUB_MAX_LOG_SIZE:-$LOG_MAX_SIZE_DEFAULT}"
-    if [[ -f "$LOG_FILE" ]] && [[ $(stat -f%z "$LOG_FILE" 2> /dev/null || echo 0) -gt "$max_size" ]]; then
+    if [[ -f "$LOG_FILE" ]] && [[ $(stat -c%s "$LOG_FILE" 2> /dev/null || echo 0) -gt "$max_size" ]]; then
         mv "$LOG_FILE" "${LOG_FILE}.old" 2> /dev/null || true
         touch "$LOG_FILE" 2> /dev/null || true
     fi
@@ -222,10 +222,43 @@ print_summary_block() {
 
 # System detection
 detect_architecture() {
-    if [[ "$(uname -m)" == "arm64" ]]; then
-        echo "Apple Silicon"
+    local arch="$(uname -m)"
+    case "$arch" in
+        x86_64)
+            echo "x86_64 (64-bit)"
+            ;;
+        aarch64)
+            echo "ARM64 (64-bit)"
+            ;;
+        armv7l)
+            echo "ARMv7 (32-bit)"
+            ;;
+        i686)
+            echo "x86 (32-bit)"
+            ;;
+        *)
+            echo "$arch"
+            ;;
+    esac
+}
+
+detect_ubuntu_version() {
+    if [[ -f /etc/lsb-release ]]; then
+        source /etc/lsb-release
+        echo "$DISTRIB_RELEASE"
+    elif command -v lsb_release &>/dev/null; then
+        lsb_release -rs
     else
-        echo "Intel"
+        echo "unknown"
+    fi
+}
+
+get_os_info() {
+    if [[ -f /etc/os-release ]]; then
+        source /etc/os-release
+        echo "$NAME $VERSION"
+    else
+        echo "Ubuntu $(detect_ubuntu_version)"
     fi
 }
 
@@ -1542,314 +1575,137 @@ should_protect_data() {
 }
 
 # Find and list app-related files (consolidated from duplicates)
+# Find and list app-related files for Ubuntu (XDG-compliant)
+# Args: package_name or app_name, pkg_type (apt/snap/flatpak/appimage)
 find_app_files() {
-    local bundle_id="$1"
-    local app_name="$2"
+    local app_name="$1"
+    local pkg_type="${2:-unknown}"
     local -a files_to_clean=()
 
+    # Normalize app name (lowercase, no special chars)
+    local app_name_lower=$(echo "$app_name" | tr '[:upper:]' '[:lower:]' | tr -d '[:punct:]')
+
     # ============================================================================
-    # User-level files (no sudo required)
+    # User-level XDG directories (no sudo required)
     # ============================================================================
 
-    # Application Support
-    [[ -d ~/Library/Application\ Support/"$app_name" ]] && files_to_clean+=("$HOME/Library/Application Support/$app_name")
-    [[ -d ~/Library/Application\ Support/"$bundle_id" ]] && files_to_clean+=("$HOME/Library/Application Support/$bundle_id")
-
-    # Caches
-    [[ -d ~/Library/Caches/"$bundle_id" ]] && files_to_clean+=("$HOME/Library/Caches/$bundle_id")
-    [[ -d ~/Library/Caches/"$app_name" ]] && files_to_clean+=("$HOME/Library/Caches/$app_name")
-
-    # Preferences
-    [[ -f ~/Library/Preferences/"$bundle_id".plist ]] && files_to_clean+=("$HOME/Library/Preferences/$bundle_id.plist")
-    while IFS= read -r -d '' pref; do
-        files_to_clean+=("$pref")
-    done < <(find ~/Library/Preferences/ByHost \( -name "$bundle_id*.plist" \) -print0 2> /dev/null)
-
-    # Logs
-    [[ -d ~/Library/Logs/"$app_name" ]] && files_to_clean+=("$HOME/Library/Logs/$app_name")
-    [[ -d ~/Library/Logs/"$bundle_id" ]] && files_to_clean+=("$HOME/Library/Logs/$bundle_id")
-
-    # Crash Reports and Diagnostics
-    while IFS= read -r -d '' report; do
-        files_to_clean+=("$report")
-    done < <(find ~/Library/Logs/DiagnosticReports \( -name "*$app_name*" -o -name "*$bundle_id*" \) -print0 2> /dev/null)
-    while IFS= read -r -d '' report; do
-        files_to_clean+=("$report")
-    done < <(find ~/Library/Logs/CrashReporter \( -name "*$app_name*" -o -name "*$bundle_id*" \) -print0 2> /dev/null)
-
-    # Saved Application State
-    [[ -d ~/Library/Saved\ Application\ State/"$bundle_id".savedState ]] && files_to_clean+=("$HOME/Library/Saved Application State/$bundle_id.savedState")
-
-    # Containers (sandboxed apps)
-    [[ -d ~/Library/Containers/"$bundle_id" ]] && files_to_clean+=("$HOME/Library/Containers/$bundle_id")
-
-    # Group Containers
-    while IFS= read -r -d '' container; do
-        files_to_clean+=("$container")
-    done < <(find ~/Library/Group\ Containers -type d \( -name "*$bundle_id*" \) -print0 2> /dev/null)
-
-    # WebKit data
-    [[ -d ~/Library/WebKit/"$bundle_id" ]] && files_to_clean+=("$HOME/Library/WebKit/$bundle_id")
-    [[ -d ~/Library/WebKit/com.apple.WebKit.WebContent/"$bundle_id" ]] && files_to_clean+=("$HOME/Library/WebKit/com.apple.WebKit.WebContent/$bundle_id")
-
-    # HTTP Storage
-    [[ -d ~/Library/HTTPStorages/"$bundle_id" ]] && files_to_clean+=("$HOME/Library/HTTPStorages/$bundle_id")
-
-    # Cookies
-    [[ -f ~/Library/Cookies/"$bundle_id".binarycookies ]] && files_to_clean+=("$HOME/Library/Cookies/$bundle_id.binarycookies")
-
-    # Launch Agents (user-level)
-    [[ -f ~/Library/LaunchAgents/"$bundle_id".plist ]] && files_to_clean+=("$HOME/Library/LaunchAgents/$bundle_id.plist")
-
-    # Application Scripts
-    [[ -d ~/Library/Application\ Scripts/"$bundle_id" ]] && files_to_clean+=("$HOME/Library/Application Scripts/$bundle_id")
-
-    # Services
-    [[ -d ~/Library/Services/"$app_name".workflow ]] && files_to_clean+=("$HOME/Library/Services/$app_name.workflow")
-
-    # Internet Plug-Ins
-    while IFS= read -r -d '' plugin; do
-        files_to_clean+=("$plugin")
-    done < <(find ~/Library/Internet\ Plug-Ins \( -name "$bundle_id*" -o -name "$app_name*" \) -print0 2> /dev/null)
-
-    # QuickLook Plugins
-    [[ -d ~/Library/QuickLook/"$app_name".qlgenerator ]] && files_to_clean+=("$HOME/Library/QuickLook/$app_name.qlgenerator")
-
-    # Preference Panes
-    [[ -d ~/Library/PreferencePanes/"$app_name".prefPane ]] && files_to_clean+=("$HOME/Library/PreferencePanes/$app_name.prefPane")
-
-    # Screen Savers
-    [[ -d ~/Library/Screen\ Savers/"$app_name".saver ]] && files_to_clean+=("$HOME/Library/Screen Savers/$app_name.saver")
-
-    # Frameworks
-    [[ -d ~/Library/Frameworks/"$app_name".framework ]] && files_to_clean+=("$HOME/Library/Frameworks/$app_name.framework")
-
-    # CoreData
-    while IFS= read -r -d '' coredata; do
-        files_to_clean+=("$coredata")
-    done < <(find ~/Library/CoreData \( -name "*$bundle_id*" -o -name "*$app_name*" \) -print0 2> /dev/null)
-
-    # Autosave Information
-    [[ -d ~/Library/Autosave\ Information/"$bundle_id" ]] && files_to_clean+=("$HOME/Library/Autosave Information/$bundle_id")
-
-    # Contextual Menu Items
-    [[ -d ~/Library/Contextual\ Menu\ Items/"$app_name".plugin ]] && files_to_clean+=("$HOME/Library/Contextual Menu Items/$app_name.plugin")
-
-    # Receipts (user-level)
-    while IFS= read -r -d '' receipt; do
-        files_to_clean+=("$receipt")
-    done < <(find ~/Library/Receipts \( -name "*$bundle_id*" -o -name "*$app_name*" \) -print0 2> /dev/null)
-
-    # Spotlight Plugins
-    [[ -d ~/Library/Spotlight/"$app_name".mdimporter ]] && files_to_clean+=("$HOME/Library/Spotlight/$app_name.mdimporter")
-
-    # Scripting Additions
-    while IFS= read -r -d '' scripting; do
-        files_to_clean+=("$scripting")
-    done < <(find ~/Library/ScriptingAdditions \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Color Pickers
-    [[ -d ~/Library/ColorPickers/"$app_name".colorPicker ]] && files_to_clean+=("$HOME/Library/ColorPickers/$app_name.colorPicker")
-
-    # Quartz Compositions
-    while IFS= read -r -d '' composition; do
-        files_to_clean+=("$composition")
-    done < <(find ~/Library/Compositions \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Address Book Plug-Ins
-    while IFS= read -r -d '' plugin; do
-        files_to_clean+=("$plugin")
-    done < <(find ~/Library/Address\ Book\ Plug-Ins \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Mail Bundles
-    while IFS= read -r -d '' bundle; do
-        files_to_clean+=("$bundle")
-    done < <(find ~/Library/Mail/Bundles \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Input Managers (app-specific only)
-    while IFS= read -r -d '' manager; do
-        files_to_clean+=("$manager")
-    done < <(find ~/Library/InputManagers \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Custom Sounds
-    while IFS= read -r -d '' sound; do
-        files_to_clean+=("$sound")
-    done < <(find ~/Library/Sounds \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Plugins
-    while IFS= read -r -d '' plugin; do
-        files_to_clean+=("$plugin")
-    done < <(find ~/Library/Plugins \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Private Frameworks
-    while IFS= read -r -d '' framework; do
-        files_to_clean+=("$framework")
-    done < <(find ~/Library/PrivateFrameworks \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Audio Plug-Ins
-    while IFS= read -r -d '' plugin; do
-        files_to_clean+=("$plugin")
-    done < <(find ~/Library/Audio/Plug-Ins \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Components
-    while IFS= read -r -d '' component; do
-        files_to_clean+=("$component")
-    done < <(find ~/Library/Components \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Metadata
-    while IFS= read -r -d '' metadata; do
-        files_to_clean+=("$metadata")
-    done < <(find ~/Library/Metadata \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Workflows
-    [[ -d ~/Library/Workflows/"$app_name".workflow ]] && files_to_clean+=("$HOME/Library/Workflows/$app_name.workflow")
-    while IFS= read -r -d '' workflow; do
-        files_to_clean+=("$workflow")
-    done < <(find ~/Library/Workflows \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Favorites (excluding Safari)
-    while IFS= read -r -d '' favorite; do
-        # Skip Safari favorites
-        case "$favorite" in
-            *Safari*) continue ;;
-        esac
-        files_to_clean+=("$favorite")
-    done < <(find ~/Library/Favorites \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # Unix-style configuration directories and files (cross-platform apps)
+    # XDG Config (~/.config)
     [[ -d ~/.config/"$app_name" ]] && files_to_clean+=("$HOME/.config/$app_name")
-    [[ -d ~/.local/share/"$app_name" ]] && files_to_clean+=("$HOME/.local/share/$app_name")
-    [[ -d ~/."$app_name" ]] && files_to_clean+=("$HOME/.$app_name")
-    [[ -f ~/."${app_name}rc" ]] && files_to_clean+=("$HOME/.${app_name}rc")
+    [[ -d ~/.config/"$app_name_lower" ]] && files_to_clean+=("$HOME/.config/$app_name_lower")
 
-    # Only print if array has elements to avoid unbound variable error
+    # XDG Data (~/.local/share)
+    [[ -d ~/.local/share/"$app_name" ]] && files_to_clean+=("$HOME/.local/share/$app_name")
+    [[ -d ~/.local/share/"$app_name_lower" ]] && files_to_clean+=("$HOME/.local/share/$app_name_lower")
+
+    # XDG Cache (~/.cache)
+    [[ -d ~/.cache/"$app_name" ]] && files_to_clean+=("$HOME/.cache/$app_name")
+    [[ -d ~/.cache/"$app_name_lower" ]] && files_to_clean+=("$HOME/.cache/$app_name_lower")
+
+    # XDG State (~/.local/state)
+    [[ -d ~/.local/state/"$app_name" ]] && files_to_clean+=("$HOME/.local/state/$app_name")
+    [[ -d ~/.local/state/"$app_name_lower" ]] && files_to_clean+=("$HOME/.local/state/$app_name_lower")
+
+    # Legacy dot directories (~/.appname)
+    [[ -d ~/."$app_name" ]] && files_to_clean+=("$HOME/.$app_name")
+    [[ -d ~/."$app_name_lower" ]] && files_to_clean+=("$HOME/.$app_name_lower")
+
+    # Legacy dot files (~/.appnamerc)
+    [[ -f ~/."${app_name}rc" ]] && files_to_clean+=("$HOME/.${app_name}rc")
+    [[ -f ~/."${app_name_lower}rc" ]] && files_to_clean+=("$HOME/.${app_name_lower}rc")
+
+    # Package-type specific locations
+    case "$pkg_type" in
+        snap)
+            # Snap user data
+            [[ -d ~/snap/"$app_name" ]] && files_to_clean+=("$HOME/snap/$app_name")
+            [[ -d ~/snap/"$app_name_lower" ]] && files_to_clean+=("$HOME/snap/$app_name_lower")
+            ;;
+        flatpak)
+            # Flatpak app data
+            while IFS= read -r -d '' flatpak_dir; do
+                files_to_clean+=("$flatpak_dir")
+            done < <(find ~/.var/app -maxdepth 1 \( -iname "*$app_name*" -o -iname "*$app_name_lower*" \) -print0 2>/dev/null)
+            ;;
+        appimage)
+            # AppImage might use standard XDG locations (already covered above)
+            # Some AppImages use ~/.appname or ~/.config/appname
+            ;;
+    esac
+
+    # Desktop entries
+    [[ -f ~/.local/share/applications/"$app_name".desktop ]] && files_to_clean+=("$HOME/.local/share/applications/$app_name.desktop")
+    [[ -f ~/.local/share/applications/"$app_name_lower".desktop ]] && files_to_clean+=("$HOME/.local/share/applications/$app_name_lower.desktop")
+
+    # Autostart entries
+    [[ -f ~/.config/autostart/"$app_name".desktop ]] && files_to_clean+=("$HOME/.config/autostart/$app_name.desktop")
+    [[ -f ~/.config/autostart/"$app_name_lower".desktop ]] && files_to_clean+=("$HOME/.config/autostart/$app_name_lower.desktop")
+
+    # Systemd user services
+    while IFS= read -r -d '' service; do
+        files_to_clean+=("$service")
+    done < <(find ~/.config/systemd/user -maxdepth 1 \( -iname "*$app_name*" -o -iname "*$app_name_lower*" \) -print0 2>/dev/null)
+
+    # Only print if array has elements
     if [[ ${#files_to_clean[@]} -gt 0 ]]; then
         printf '%s\n' "${files_to_clean[@]}"
     fi
 }
 
-# Find system-level app files (requires sudo)
+# Find system-level app files for Ubuntu (requires sudo)
 find_app_system_files() {
-    local bundle_id="$1"
-    local app_name="$2"
+    local app_name="$1"
+    local pkg_type="${2:-unknown}"
     local -a system_files=()
 
-    # System Application Support
-    [[ -d /Library/Application\ Support/"$app_name" ]] && system_files+=("/Library/Application Support/$app_name")
-    [[ -d /Library/Application\ Support/"$bundle_id" ]] && system_files+=("/Library/Application Support/$bundle_id")
+    # Normalize app name
+    local app_name_lower=$(echo "$app_name" | tr '[:upper:]' '[:lower:]' | tr -d '[:punct:]')
 
-    # System Launch Agents
-    [[ -f /Library/LaunchAgents/"$bundle_id".plist ]] && system_files+=("/Library/LaunchAgents/$bundle_id.plist")
+    # System configuration
+    while IFS= read -r -d '' config; do
+        system_files+=("$config")
+    done < <(find /etc -maxdepth 2 \( -iname "*$app_name*" -o -iname "*$app_name_lower*" \) -type f -o -type d -print0 2>/dev/null)
 
-    # System Launch Daemons
-    [[ -f /Library/LaunchDaemons/"$bundle_id".plist ]] && system_files+=("/Library/LaunchDaemons/$bundle_id.plist")
+    # System data
+    [[ -d /usr/share/"$app_name" ]] && system_files+=("/usr/share/$app_name")
+    [[ -d /usr/share/"$app_name_lower" ]] && system_files+=("/usr/share/$app_name_lower")
 
-    # Privileged Helper Tools
-    while IFS= read -r -d '' helper; do
-        system_files+=("$helper")
-    done < <(find /Library/PrivilegedHelperTools \( -name "$bundle_id*" \) -print0 2> /dev/null)
+    # System var/lib data
+    [[ -d /var/lib/"$app_name" ]] && system_files+=("/var/lib/$app_name")
+    [[ -d /var/lib/"$app_name_lower" ]] && system_files+=("/var/lib/$app_name_lower")
 
-    # System Preferences
-    [[ -f /Library/Preferences/"$bundle_id".plist ]] && system_files+=("/Library/Preferences/$bundle_id.plist")
+    # System cache
+    [[ -d /var/cache/"$app_name" ]] && system_files+=("/var/cache/$app_name")
+    [[ -d /var/cache/"$app_name_lower" ]] && system_files+=("/var/cache/$app_name_lower")
 
-    # Installation Receipts
-    while IFS= read -r -d '' receipt; do
-        system_files+=("$receipt")
-    done < <(find /private/var/db/receipts \( -name "*$bundle_id*" \) -print0 2> /dev/null)
+    # System logs
+    [[ -d /var/log/"$app_name" ]] && system_files+=("/var/log/$app_name")
+    [[ -d /var/log/"$app_name_lower" ]] && system_files+=("/var/log/$app_name_lower")
 
-    # System Logs
-    [[ -d /Library/Logs/"$app_name" ]] && system_files+=("/Library/Logs/$app_name")
-    [[ -d /Library/Logs/"$bundle_id" ]] && system_files+=("/Library/Logs/$bundle_id")
+    # Systemd system services
+    while IFS= read -r -d '' service; do
+        system_files+=("$service")
+    done < <(find /etc/systemd/system /lib/systemd/system -maxdepth 1 \( -iname "*$app_name*" -o -iname "*$app_name_lower*" \) -print0 2>/dev/null)
 
-    # System Crash Reports and Diagnostics
-    while IFS= read -r -d '' report; do
-        system_files+=("$report")
-    done < <(find /Library/Logs/DiagnosticReports \( -name "*$app_name*" -o -name "*$bundle_id*" \) -print0 2> /dev/null)
-    while IFS= read -r -d '' report; do
-        system_files+=("$report")
-    done < <(find /Library/Logs/CrashReporter \( -name "*$app_name*" -o -name "*$bundle_id*" \) -print0 2> /dev/null)
+    # Desktop files
+    [[ -f /usr/share/applications/"$app_name".desktop ]] && system_files+=("/usr/share/applications/$app_name.desktop")
+    [[ -f /usr/share/applications/"$app_name_lower".desktop ]] && system_files+=("/usr/share/applications/$app_name_lower.desktop")
 
-    # System Frameworks
-    [[ -d /Library/Frameworks/"$app_name".framework ]] && system_files+=("/Library/Frameworks/$app_name.framework")
-
-    # System Internet Plug-Ins
-    while IFS= read -r -d '' plugin; do
-        system_files+=("$plugin")
-    done < <(find /Library/Internet\ Plug-Ins \( -name "$bundle_id*" -o -name "$app_name*" \) -print0 2> /dev/null)
-
-    # System QuickLook Plugins
-    [[ -d /Library/QuickLook/"$app_name".qlgenerator ]] && system_files+=("/Library/QuickLook/$app_name.qlgenerator")
-
-    # System Receipts
-    while IFS= read -r -d '' receipt; do
-        system_files+=("$receipt")
-    done < <(find /Library/Receipts \( -name "*$bundle_id*" -o -name "*$app_name*" \) -print0 2> /dev/null)
-
-    # System Spotlight Plugins
-    [[ -d /Library/Spotlight/"$app_name".mdimporter ]] && system_files+=("/Library/Spotlight/$app_name.mdimporter")
-
-    # System Scripting Additions
-    while IFS= read -r -d '' scripting; do
-        system_files+=("$scripting")
-    done < <(find /Library/ScriptingAdditions \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # System Color Pickers
-    [[ -d /Library/ColorPickers/"$app_name".colorPicker ]] && system_files+=("/Library/ColorPickers/$app_name.colorPicker")
-
-    # System Quartz Compositions
-    while IFS= read -r -d '' composition; do
-        system_files+=("$composition")
-    done < <(find /Library/Compositions \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # System Address Book Plug-Ins
-    while IFS= read -r -d '' plugin; do
-        system_files+=("$plugin")
-    done < <(find /Library/Address\ Book\ Plug-Ins \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # System Mail Bundles
-    while IFS= read -r -d '' bundle; do
-        system_files+=("$bundle")
-    done < <(find /Library/Mail/Bundles \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # System Input Managers
-    while IFS= read -r -d '' manager; do
-        system_files+=("$manager")
-    done < <(find /Library/InputManagers \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # System Sounds
-    while IFS= read -r -d '' sound; do
-        system_files+=("$sound")
-    done < <(find /Library/Sounds \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # System Contextual Menu Items
-    while IFS= read -r -d '' item; do
-        system_files+=("$item")
-    done < <(find /Library/Contextual\ Menu\ Items \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # System Preference Panes
-    [[ -d /Library/PreferencePanes/"$app_name".prefPane ]] && system_files+=("/Library/PreferencePanes/$app_name.prefPane")
-
-    # System Screen Savers
-    [[ -d /Library/Screen\ Savers/"$app_name".saver ]] && system_files+=("/Library/Screen Savers/$app_name.saver")
-
-    # System Caches
-    [[ -d /Library/Caches/"$bundle_id" ]] && system_files+=("/Library/Caches/$bundle_id")
-    [[ -d /Library/Caches/"$app_name" ]] && system_files+=("/Library/Caches/$app_name")
-
-    # System Audio Plug-Ins
-    while IFS= read -r -d '' plugin; do
-        system_files+=("$plugin")
-    done < <(find /Library/Audio/Plug-Ins \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # System Components
-    while IFS= read -r -d '' component; do
-        system_files+=("$component")
-    done < <(find /Library/Components \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
-
-    # System Extensions
-    while IFS= read -r -d '' extension; do
-        system_files+=("$extension")
-    done < <(find /Library/Extensions \( -name "$app_name*" -o -name "$bundle_id*" \) -print0 2> /dev/null)
+    # Package-specific system locations
+    case "$pkg_type" in
+        snap)
+            [[ -d /snap/"$app_name" ]] && system_files+=("/snap/$app_name")
+            [[ -d /snap/"$app_name_lower" ]] && system_files+=("/snap/$app_name_lower")
+            [[ -d /var/snap/"$app_name" ]] && system_files+=("/var/snap/$app_name")
+            [[ -d /var/snap/"$app_name_lower" ]] && system_files+=("/var/snap/$app_name_lower")
+            ;;
+        flatpak)
+            [[ -d /var/lib/flatpak/app/"$app_name" ]] && system_files+=("/var/lib/flatpak/app/$app_name")
+            # Flatpak uses reverse domain names, so fuzzy match
+            while IFS= read -r -d '' flatpak_dir; do
+                system_files+=("$flatpak_dir")
+            done < <(find /var/lib/flatpak/app -maxdepth 1 -iname "*$app_name*" -print0 2>/dev/null)
+            ;;
+    esac
 
     # Only print if array has elements
     if [[ ${#system_files[@]} -gt 0 ]]; then
