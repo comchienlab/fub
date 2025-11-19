@@ -1,6 +1,6 @@
 #!/bin/bash
 # Fub - Main Entry Point
-# A comprehensive macOS maintenance tool
+# A comprehensive Ubuntu maintenance tool
 #
 # Clean - Remove junk files and optimize system
 # Uninstall - Remove applications completely
@@ -23,7 +23,7 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 # Version info
 VERSION="1.9.15"
-FUB_TAGLINE="can dig deep to clean your Mac."
+FUB_TAGLINE="can dig deep to clean your Ubuntu system."
 
 # Get latest version from remote repository
 get_latest_version() {
@@ -41,7 +41,7 @@ check_for_updates() {
 
     # Skip if checked recently
     if [[ -f "$cache" ]]; then
-        local age=$(($(date +%s) - $(stat -f%m "$cache" 2> /dev/null || echo 0)))
+        local age=$(($(date +%s) - $(stat -c%Y "$cache" 2> /dev/null || echo 0)))
         [[ $age -lt $ttl ]] && return
     fi
 
@@ -469,9 +469,9 @@ show_main_menu() {
     # Spacer before menu options
     printf '\r\033[2K\n'
 
-    printf '\r\033[2K%s\n' "$(show_menu_option 1 "Clean Mac - Remove junk files and optimize" "$([[ $selected -eq 1 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 1 "Clean System - Remove junk files and optimize" "$([[ $selected -eq 1 ]] && echo true || echo false)")"
     printf '\r\033[2K%s\n' "$(show_menu_option 2 "Uninstall Apps - Remove applications completely" "$([[ $selected -eq 2 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 3 "Optimize Mac - System health & tuning" "$([[ $selected -eq 3 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 3 "Optimize System - System health & tuning" "$([[ $selected -eq 3 ]] && echo true || echo false)")"
     printf '\r\033[2K%s\n' "$(show_menu_option 4 "Analyze Disk - Interactive space explorer" "$([[ $selected -eq 4 ]] && echo true || echo false)")"
 
     if [[ -t 0 ]]; then
