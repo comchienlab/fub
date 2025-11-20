@@ -5,11 +5,14 @@
 
 ## Features
 
-- **Deep System Cleanup** - Deep system cleaning - caches, logs, temp files, APT/Snap/Flatpak cleanup
-- **Thorough Uninstall** - Scans 22+ locations to remove app leftovers, not just the .app file
-- **System Optimization** - Rebuilds caches, resets services, and trims swap/network cruft with one run
+- **Deep System Cleanup** - Deep system cleaning - caches, logs, temp files, APT/Snap/Flatpak cleanup, telemetry removal
+- **Thorough Uninstall** - Multi-package manager support (APT, Snap, Flatpak, AppImage) with fzf fuzzy finder
+- **System Optimization** - Performance tuning, cache rebuilds, TLP/auto-cpufreq power management for laptops
 - **Interactive Disk Analyzer** - Navigate folders with arrow keys, find and delete large files quickly
-- **Fast & Lightweight** - Terminal-based with arrow-key navigation, pagination, and Touch ID support
+- **Swap File Manager** - Create/manage swap files with interactive size selection
+- **Security Hardening** - UFW firewall and Fail2Ban setup with sensible defaults
+- **Startup Manager** - Enable/disable auto-start programs to improve boot time
+- **Fast & Lightweight** - Terminal-based with fzf fuzzy finder, arrow-key navigation, and batch operations
 
 ## Quick Start
 
@@ -28,15 +31,18 @@ brew install tw93/tap/mole
 **Run:**
 
 ```bash
-fub                      # Interactive menu
+fub                      # Interactive menu (7 options)
 fub clean                # System cleanup
 fub clean --dry-run      # Preview mode
 fub clean --whitelist    # Manage protected caches
-fub uninstall            # Uninstall apps
-fub optimize             # System optimization
+fub uninstall            # Uninstall apps (APT, Snap, Flatpak, AppImage)
+fub optimize             # System optimization & performance tuning
 fub analyze              # Disk analyzer
+fub swap                 # Swap file manager
+fub security             # Security hardening (UFW, Fail2Ban)
+fub startup              # Startup applications manager
 
-fub touchid              # Configure Touch ID for sudo
+fub touchid              # Configure Touch ID for sudo (macOS only)
 fub update               # Update Fub
 fub remove               # Remove Fub from system
 fub --help               # Show help
@@ -129,6 +135,142 @@ Analyze Disk  ~/Documents  |  Total: 156.8GB
     5. ██░░░░░░░░░░░░░░░░░   5.2%  |  📄 backup_2023.zip              8.2GB
 
   ↑↓←→ Navigate  |  O Open  |  F Reveal  |  ⌫ Delete  |  L Large(24)  |  Q Quit
+```
+
+### Swap File Manager
+
+```bash
+$ fub swap
+
+Current Memory Status
+═══════════════════════════════════════════════
+  RAM:         Total: 8.0G | Used: 2.5G | Free: 5.5G
+  Swap:        No swap file configured
+
+Select swap file size:
+▶ 2GB
+  4GB
+  8GB
+  16GB
+  32GB
+  Custom
+  Remove Swap
+  Cancel
+
+Creating 8GB swap file...
+  → Creating 8GB swap file (this may take a moment)...
+  → Setting permissions...
+  → Formatting as swap...
+  → Enabling swap...
+  → Adding to /etc/fstab for persistence...
+
+✓ Swap file created successfully!
+```
+
+### Security Hardening
+
+```bash
+$ fub security
+
+Current Security Status
+═══════════════════════════════════════════════
+  UFW Firewall:    Not installed
+  Fail2Ban:        Not installed
+  SSH Server:      Running
+
+Select security action:
+▶ Setup UFW Firewall
+  Setup Fail2Ban
+  Show UFW Rules
+  Show Fail2Ban Status
+  Exit
+
+Setting up UFW Firewall...
+  → Installing UFW...
+  → Configuring default policies...
+  → Allowing SSH (port 22)...
+
+Allow HTTP (port 80)? [y/N]: y
+  ✓ HTTP allowed
+
+✓ UFW Firewall configured and enabled!
+```
+
+### Startup Applications Manager
+
+```bash
+$ fub startup
+
+Startup Applications Status
+═══════════════════════════════════════════════
+  Total:      12 startup applications
+  Enabled:    8 active
+  Disabled:   4 inactive
+
+  User apps:   5 applications
+  System apps: 7 applications
+
+Select action:
+▶ Disable Apps
+  Enable Apps
+  Remove User Apps
+  List All Apps
+  Exit
+
+Select startup apps to DISABLE: (Tab: select, Ctrl-A: all)
+▶ ☑ [ENABLED ] [USER  ]  Dropbox
+  ☐ [ENABLED ] [SYSTEM]  GNOME Keyring
+  ☑ [ENABLED ] [USER  ]  Slack Startup
+
+Disabling startup applications...
+  ✓ Disabled: Dropbox
+  ✓ Disabled: Slack Startup
+
+✓ Disabled 2 startup application(s)
+```
+
+## Environment Variables
+
+Fub supports environment variables for non-interactive configuration:
+
+### Clean Command
+```bash
+FUB_REMOVE_BLOAT=true       # Remove bloatware packages (gnome-games, etc.)
+FUB_REMOVE_TELEMETRY=true   # Disable Ubuntu telemetry (apport, whoopsie)
+FUB_CLEAR_PRIVACY_LOGS=true # Clear privacy logs (default: true)
+```
+
+### Optimize Command
+```bash
+FUB_INSTALL_NERDFONTS=true    # Install Nerd Fonts (JetBrains, FiraCode, etc.)
+FUB_INSTALL_TLP=true          # Install TLP power management (laptops only)
+FUB_INSTALL_AUTOCPUFREQ=true  # Install auto-cpufreq (alternative to TLP)
+```
+
+### Swap Command
+```bash
+FUB_SWAP_SIZE=8               # Create swap file with specified size in GB
+```
+
+### Security Command
+```bash
+FUB_SETUP_UFW=true            # Auto-setup UFW firewall
+FUB_SETUP_FAIL2BAN=true       # Auto-setup Fail2Ban
+```
+
+### Example Usage
+```bash
+# Deep privacy cleanup
+FUB_REMOVE_TELEMETRY=true FUB_REMOVE_BLOAT=true fub clean
+
+# Full laptop optimization
+FUB_INSTALL_TLP=true FUB_INSTALL_NERDFONTS=true fub optimize
+
+# Create 16GB swap file
+FUB_SWAP_SIZE=16 fub swap
+
+# Auto-configure security
+FUB_SETUP_UFW=true FUB_SETUP_FAIL2BAN=true fub security
 ```
 
 ## Quick Launchers
