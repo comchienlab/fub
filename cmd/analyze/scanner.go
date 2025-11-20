@@ -560,5 +560,6 @@ func getLastAccessTimeFromInfo(info fs.FileInfo) time.Time {
 	if !ok {
 		return time.Time{}
 	}
-	return time.Unix(stat.Atimespec.Sec, stat.Atimespec.Nsec)
+	// Platform-specific: macOS uses Atimespec, Linux uses Atim
+	return time.Unix(stat.Atim.Sec, stat.Atim.Nsec)
 }
