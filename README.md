@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Fub</h1>
-  <p><em>Dig deep like a mole to clean your Mac.</em></p>
+  <p><em>Dig deep to clean your Ubuntu system.</em></p>
 </div>
 
 <p align="center">
@@ -14,12 +14,12 @@
 
 <p align="center">
   <img src="https://cdn.tw93.fun/img/mole.jpeg" alt="Fub - 95.50GB freed" width="800" />
-  <p align="center">由于 Fub 还在中级版本，如果这台 Mac 对你非常重要，建议再等等。</p>
+  <p align="center">由于 Fub 还在中级版本，如果这台 Ubuntu 系统对你非常重要，建议再等等。</p>
 </p>
 
 ## Features
 
-- **Deep System Cleanup** - Cleans way more junk than CleanMyMac/Lemon - caches, logs, temp files
+- **Deep System Cleanup** - Deep system cleaning - caches, logs, temp files, APT/Snap/Flatpak cleanup
 - **Thorough Uninstall** - Scans 22+ locations to remove app leftovers, not just the .app file
 - **System Optimization** - Rebuilds caches, resets services, and trims swap/network cruft with one run
 - **Interactive Disk Analyzer** - Navigate folders with arrow keys, find and delete large files quickly
@@ -42,35 +42,35 @@ brew install tw93/tap/mole
 **Run:**
 
 ```bash
-mo                      # Interactive menu
-mo clean                # System cleanup
-mo clean --dry-run      # Preview mode
-mo clean --whitelist    # Manage protected caches
-mo uninstall            # Uninstall apps
-mo optimize             # System optimization
-mo analyze              # Disk analyzer
+fub                      # Interactive menu
+fub clean                # System cleanup
+fub clean --dry-run      # Preview mode
+fub clean --whitelist    # Manage protected caches
+fub uninstall            # Uninstall apps
+fub optimize             # System optimization
+fub analyze              # Disk analyzer
 
-mo touchid              # Configure Touch ID for sudo
-mo update               # Update Fub
-mo remove               # Remove Fub from system
-mo --help               # Show help
-mo --version            # Show installed version
+fub touchid              # Configure Touch ID for sudo
+fub update               # Update Fub
+fub remove               # Remove Fub from system
+fub --help               # Show help
+fub --version            # Show installed version
 
 ```
 
 ## Tips
 
-- Safety first, if your Mac is mission-critical, wait for Fub to mature before full cleanups.
-- Preview the cleanup by running `mo clean --dry-run` and reviewing the generated list.
-- Use `mo clean --whitelist` to manage protected caches.
-- Use `mo touchid` to approve sudo with Touch ID instead of typing your password.
+- Safety first, if your Ubuntu system is mission-critical, wait for Fub to mature before full cleanups.
+- Preview the cleanup by running `fub clean --dry-run` and reviewing the generated list.
+- Use `fub clean --whitelist` to manage protected caches.
+- Use `fub touchid` to approve sudo with Touch ID instead of typing your password.
 
 ## Features in Detail
 
 ### Deep System Cleanup
 
 ```bash
-$ mo clean
+$ fub clean
 
 Scanning cache directories...
 
@@ -89,7 +89,7 @@ Space freed: 95.5GB | Free space now: 223.5GB
 ### Smart App Uninstaller
 
 ```bash
-$ mo uninstall
+$ fub uninstall
 
 Select Apps to Remove
 ═══════════════════════════
@@ -113,7 +113,7 @@ Space freed: 12.8GB
 ### System Optimization
 
 ```bash
-$ mo optimize
+$ fub optimize
 
 System: 5/32 GB RAM | 333/460 GB Disk (72%) | Uptime 6d
 
@@ -132,7 +132,7 @@ System optimization completed
 ### Disk Space Analyzer
 
 ```bash
-$ mo analyze
+$ fub analyze
 
 Analyze Disk  ~/Documents  |  Total: 156.8GB
 
@@ -153,13 +153,13 @@ Launch Fub commands instantly from Raycast or Alfred:
 curl -fsSL https://raw.githubusercontent.com/tw93/Fub/main/scripts/setup-quick-launchers.sh | bash
 ```
 
-Adds 4 commands: `clean`, `uninstall`, `optimize`, `analyze`. Auto-detects your terminal or set `MO_LAUNCHER_APP=<name>` to override.
+Adds 4 commands: `clean`, `uninstall`, `optimize`, `analyze`. Auto-detects your terminal or set `FUB_LAUNCHER_APP=<name>` to override.
 
 ## Support
 
 <a href="https://miaoyan.app/cats.html?name=Fub"><img src="https://miaoyan.app/assets/sponsors.svg" width="1000px" /></a>
 
-- If Fub reclaimed storage for you, consider starring the repo or sharing it with friends needing a cleaner Mac.
+- If Fub reclaimed storage for you, consider starring the repo or sharing it with friends needing a cleaner Ubuntu system.
 - Have ideas or fixes? Open an issue or PR and help shape Fub's roadmap together with the community.
 - Love cats? Treat Tangyuan and Cola to canned food via <a href="https://miaoyan.app/cats.html?name=Fub" target="_blank">this link</a> and keep the mascots purring.
 

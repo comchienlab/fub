@@ -266,7 +266,7 @@ update_fub() {
     rm -f "$HOME/.cache/fub/version_check" "$HOME/.cache/fub/update_message"
 }
 
-# Remove Mole from system
+# Remove Fub from system
 remove_fub() {
     # Detect all installations with loading
     if [[ -t 1 ]]; then

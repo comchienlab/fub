@@ -484,11 +484,11 @@ clean_ds_store_tree() {
 start_cleanup() {
     clear
     printf '\n'
-    echo -e "${PURPLE}Clean Your Mac${NC}"
+    echo -e "${PURPLE}Clean Your Ubuntu System${NC}"
 
     if [[ "$DRY_RUN" != "true" && -t 0 ]]; then
         echo ""
-        echo -e "${YELLOW}☻${NC} First time? Run ${GRAY}mo clean --dry-run${NC} first to preview changes"
+        echo -e "${YELLOW}☻${NC} First time? Run ${GRAY}fub clean --dry-run${NC} first to preview changes"
     fi
 
     if [[ "$DRY_RUN" == "true" ]]; then

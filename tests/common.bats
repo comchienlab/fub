@@ -29,14 +29,14 @@ teardown() {
     unset FUB_SPINNER_CHARS || true
 }
 
-@test "mo_spinner_chars returns default sequence when unset" {
-    result="$(HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/common.sh'; mo_spinner_chars")"
+@test "fub_spinner_chars returns default sequence when unset" {
+    result="$(HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/common.sh'; fub_spinner_chars")"
     [ "$result" = "|/-\\" ]
 }
 
-@test "mo_spinner_chars respects FUB_SPINNER_CHARS override" {
+@test "fub_spinner_chars respects FUB_SPINNER_CHARS override" {
     export FUB_SPINNER_CHARS="abcd"
-    result="$(HOME="$HOME" FUB_SPINNER_CHARS="$FUB_SPINNER_CHARS" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/common.sh'; mo_spinner_chars")"
+    result="$(HOME="$HOME" FUB_SPINNER_CHARS="$FUB_SPINNER_CHARS" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/common.sh'; fub_spinner_chars")"
     [ "$result" = "abcd" ]
 }
 
@@ -60,7 +60,7 @@ teardown() {
     stdout_output="$(HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/common.sh'; log_info '$message'")"
     [[ "$stdout_output" == *"$message"* ]]
 
-    local log_file="$HOME/.config/fub/mole.log"
+    local log_file="$HOME/.config/fub/fub.log"
     [[ -f "$log_file" ]]
     grep -q "INFO: $message" "$log_file"
 }
@@ -74,14 +74,14 @@ teardown() {
     [[ -s "$stderr_file" ]]
     grep -q "$message" "$stderr_file"
 
-    local log_file="$HOME/.config/fub/mole.log"
+    local log_file="$HOME/.config/fub/fub.log"
     [[ -f "$log_file" ]]
     grep -q "ERROR: $message" "$log_file"
 }
 
 @test "rotate_log_once only checks log size once per session" {
     # Create a log file exceeding the max size
-    local log_file="$HOME/.config/fub/mole.log"
+    local log_file="$HOME/.config/fub/fub.log"
     mkdir -p "$(dirname "$log_file")"
     dd if=/dev/zero of="$log_file" bs=1024 count=1100 2> /dev/null
 

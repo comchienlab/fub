@@ -36,7 +36,7 @@ readonly ICON_NAV_LEFT="←"  # Navigation left
 readonly ICON_NAV_RIGHT="→" # Navigation right
 
 # Spinner character helpers (ASCII by default, overridable via env)
-mo_spinner_chars() {
+fub_spinner_chars() {
     local chars="${FUB_SPINNER_CHARS:-|/-\\}"
     [[ -z "$chars" ]] && chars='|/-\\'
     printf "%s" "$chars"
@@ -114,7 +114,7 @@ safe_remove() {
 }
 
 # Logging configuration
-readonly LOG_FILE="${HOME}/.config/fub/mole.log"
+readonly LOG_FILE="${HOME}/.config/fub/fub.log"
 readonly LOG_MAX_SIZE_DEFAULT=1048576 # 1MB
 
 # Ensure log directory exists
@@ -546,12 +546,12 @@ update_via_homebrew() {
     fi
 
     if [[ -t 1 ]]; then
-        start_inline_spinner "Upgrading Mole..."
+        start_inline_spinner "Upgrading Fub..."
     else
-        echo "Upgrading Mole..."
+        echo "Upgrading Fub..."
     fi
     local upgrade_output
-    upgrade_output=$(brew upgrade mole 2>&1) || true
+    upgrade_output=$(brew upgrade fub 2>&1) || true
     if [[ -t 1 ]]; then
         stop_inline_spinner
     fi
@@ -559,7 +559,7 @@ update_via_homebrew() {
     if echo "$upgrade_output" | grep -q "already installed"; then
         # Get current version
         local current_version
-        current_version=$(brew list --versions mole 2> /dev/null | awk '{print $2}')
+        current_version=$(brew list --versions fub 2> /dev/null | awk '{print $2}')
         echo -e "${GREEN}${ICON_SUCCESS}${NC} Already on latest version (${current_version:-$version})"
     elif echo "$upgrade_output" | grep -q "Error:"; then
         log_error "Homebrew upgrade failed"
@@ -570,7 +570,7 @@ update_via_homebrew() {
         echo "$upgrade_output" | grep -Ev "^(==>|Updating Homebrew|Warning:)" || true
         # Get new version
         local new_version
-        new_version=$(brew list --versions mole 2> /dev/null | awk '{print $2}')
+        new_version=$(brew list --versions fub 2> /dev/null | awk '{print $2}')
         echo -e "${GREEN}${ICON_SUCCESS}${NC} Updated to latest version (${new_version:-$version})"
     fi
 
@@ -630,7 +630,7 @@ start_inline_spinner() {
         (
             trap 'exit 0' TERM INT EXIT
             local chars
-            chars="$(mo_spinner_chars)"
+            chars="$(fub_spinner_chars)"
             [[ -z "$chars" ]] && chars='|/-\'
             local i=0
             while true; do
@@ -715,7 +715,7 @@ create_temp_dir() {
 create_temp_file_named() {
     local suffix="${1:-}"
     local temp
-    temp=$(mktemp "/tmp/mole_${suffix}_XXXXXX") || return 1
+    temp=$(mktemp "/tmp/fub_${suffix}_XXXXXX") || return 1
     FUB_TEMP_FILES+=("$temp")
     echo "$temp"
 }

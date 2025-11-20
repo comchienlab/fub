@@ -114,7 +114,7 @@ func (m model) inOverviewMode() bool {
 }
 
 func main() {
-	target := os.Getenv("MO_ANALYZE_PATH")
+	target := os.Getenv("FUB_ANALYZE_PATH")
 	if target == "" && len(os.Args) > 1 {
 		target = os.Args[1]
 	}
