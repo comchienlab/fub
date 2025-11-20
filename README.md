@@ -3,20 +3,6 @@
   <p><em>Dig deep to clean your Ubuntu system.</em></p>
 </div>
 
-<p align="center">
-  <a href="https://github.com/tw93/mole/stargazers"><img src="https://img.shields.io/github/stars/tw93/mole?style=flat-square" alt="Stars"></a>
-  <a href="https://github.com/tw93/mole/releases"><img src="https://img.shields.io/github/v/tag/tw93/mole?label=version&style=flat-square" alt="Version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License"></a>
-  <a href="https://github.com/tw93/mole/commits"><img src="https://img.shields.io/github/commit-activity/m/tw93/mole?style=flat-square" alt="Commits"></a>
-  <a href="https://twitter.com/HiTw93"><img src="https://img.shields.io/badge/follow-Tw93-red?style=flat-square&logo=Twitter" alt="Twitter"></a>
-  <a href="https://t.me/+GclQS9ZnxyI2ODQ1"><img src="https://img.shields.io/badge/chat-Telegram-blueviolet?style=flat-square&logo=Telegram" alt="Telegram"></a>
-</p>
-
-<p align="center">
-  <img src="https://cdn.tw93.fun/img/mole.jpeg" alt="Fub - 95.50GB freed" width="800" />
-  <p align="center">由于 Fub 还在中级版本，如果这台 Ubuntu 系统对你非常重要，建议再等等。</p>
-</p>
-
 ## Features
 
 - **Deep System Cleanup** - Deep system cleaning - caches, logs, temp files, APT/Snap/Flatpak cleanup
@@ -153,16 +139,4 @@ Launch Fub commands instantly from Raycast or Alfred:
 curl -fsSL https://raw.githubusercontent.com/tw93/Fub/main/scripts/setup-quick-launchers.sh | bash
 ```
 
-Adds 4 commands: `clean`, `uninstall`, `optimize`, `analyze`. Auto-detects your terminal or set `FUB_LAUNCHER_APP=<name>` to override.
-
-## Support
-
-<a href="https://miaoyan.app/cats.html?name=Fub"><img src="https://miaoyan.app/assets/sponsors.svg" width="1000px" /></a>
-
-- If Fub reclaimed storage for you, consider starring the repo or sharing it with friends needing a cleaner Ubuntu system.
-- Have ideas or fixes? Open an issue or PR and help shape Fub's roadmap together with the community.
-- Love cats? Treat Tangyuan and Cola to canned food via <a href="https://miaoyan.app/cats.html?name=Fub" target="_blank">this link</a> and keep the mascots purring.
-
-## License
-
-MIT License - feel free to enjoy and participate in open source.
+Adds 4 commands: `clean`, `uninstall`, `optimize`, `analyze`. Auto-detects your terminal or set `MO_LAUNCHER_APP=<name>` to override.
