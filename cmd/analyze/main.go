@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -189,24 +190,134 @@ func createOverviewEntries() []dirEntry {
 	home := os.Getenv("HOME")
 	entries := []dirEntry{}
 
-	if home != "" {
-		entries = append(entries,
-			dirEntry{Name: "Home (~)", Path: home, IsDir: true, Size: -1},
-			dirEntry{Name: "Library (~/Library)", Path: filepath.Join(home, "Library"), IsDir: true, Size: -1},
-		)
+	if home == "" {
+		return entries
 	}
 
-	entries = append(entries,
-		dirEntry{Name: "Applications", Path: "/Applications", IsDir: true, Size: -1},
-		dirEntry{Name: "System Library", Path: "/Library", IsDir: true, Size: -1},
-	)
+	// Always show Home directory
+	entries = append(entries, dirEntry{Name: "Home (~)", Path: home, IsDir: true, Size: -1})
 
-	// Add Volumes shortcut only when it contains real mounted folders (e.g., external disks)
-	if hasUsefulVolumeMounts("/Volumes") {
-		entries = append(entries, dirEntry{Name: "Volumes", Path: "/Volumes", IsDir: true, Size: -1})
+	// Platform-specific directories
+	if runtime.GOOS == "darwin" {
+		// macOS directories
+		entries = append(entries,
+			dirEntry{Name: "Library (~/Library)", Path: filepath.Join(home, "Library"), IsDir: true, Size: -1},
+			dirEntry{Name: "Applications", Path: "/Applications", IsDir: true, Size: -1},
+			dirEntry{Name: "System Library", Path: "/Library", IsDir: true, Size: -1},
+		)
+		// Add Volumes shortcut only when it contains real mounted folders
+		if hasUsefulVolumeMounts("/Volumes") {
+			entries = append(entries, dirEntry{Name: "Volumes", Path: "/Volumes", IsDir: true, Size: -1})
+		}
+	} else {
+		// Linux/Ubuntu directories
+
+		// User directories (high priority)
+		userDirs := []struct {
+			name string
+			path string
+		}{
+			{"Downloads (~/Downloads)", filepath.Join(home, "Downloads")},
+			{"Documents (~/Documents)", filepath.Join(home, "Documents")},
+			{"Cache (~/.cache)", filepath.Join(home, ".cache")},
+			{"Local Data (~/.local/share)", filepath.Join(home, ".local/share")},
+		}
+
+		for _, dir := range userDirs {
+			if dirExists(dir.path) {
+				entries = append(entries, dirEntry{Name: dir.name, Path: dir.path, IsDir: true, Size: -1})
+			}
+		}
+
+		// Trash (always show if exists)
+		trashPath := filepath.Join(home, ".local/share/Trash/files")
+		if dirExists(trashPath) {
+			entries = append(entries, dirEntry{Name: "Trash (~/.local/share/Trash)", Path: trashPath, IsDir: true, Size: -1})
+		}
+
+		// System directories (medium priority)
+		systemDirs := []struct {
+			name string
+			path string
+		}{
+			{"/var", "/var"},
+			{"/usr", "/usr"},
+			{"/opt", "/opt"},
+			{"/tmp", "/tmp"},
+		}
+
+		for _, dir := range systemDirs {
+			if dirExists(dir.path) {
+				entries = append(entries, dirEntry{Name: dir.name, Path: dir.path, IsDir: true, Size: -1})
+			}
+		}
+
+		// Snap (if snapd installed)
+		if dirExists("/snap") {
+			entries = append(entries, dirEntry{Name: "Snap Packages (/snap)", Path: "/snap", IsDir: true, Size: -1})
+		}
+
+		// Docker (if exists)
+		if dirExists("/var/lib/docker") {
+			entries = append(entries, dirEntry{Name: "Docker (/var/lib/docker)", Path: "/var/lib/docker", IsDir: true, Size: -1})
+		}
+
+		// Flatpak (if exists in home)
+		flatpakPath := filepath.Join(home, ".var/app")
+		if dirExists(flatpakPath) {
+			entries = append(entries, dirEntry{Name: "Flatpak Apps (~/.var/app)", Path: flatpakPath, IsDir: true, Size: -1})
+		}
 	}
 
 	return entries
+}
+
+// dirExists checks if a directory exists
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+// getOpenCommand returns the platform-specific command to open a file/directory
+func getOpenCommand() string {
+	if runtime.GOOS == "darwin" {
+		return "open"
+	}
+	// Linux: try xdg-open (standard), nautilus, dolphin, thunar
+	for _, cmd := range []string{"xdg-open", "nautilus", "dolphin", "thunar"} {
+		if _, err := exec.LookPath(cmd); err == nil {
+			return cmd
+		}
+	}
+	return "xdg-open" // fallback
+}
+
+// getRevealCommand returns the platform-specific command to reveal a file in file manager
+// Returns command name and arguments
+func getRevealCommand() (string, []string) {
+	if runtime.GOOS == "darwin" {
+		return "open", []string{"-R"}
+	}
+	// Linux: nautilus/dolphin can show and select
+	if _, err := exec.LookPath("nautilus"); err == nil {
+		return "nautilus", []string{"--select"}
+	}
+	if _, err := exec.LookPath("dolphin"); err == nil {
+		return "dolphin", []string{"--select"}
+	}
+	// Fallback: just open the parent directory
+	return "xdg-open", nil
+}
+
+// getFileManagerName returns the name of the file manager for status messages
+func getFileManagerName() string {
+	if runtime.GOOS == "darwin" {
+		return "Finder"
+	}
+	return "file manager"
 }
 
 func hasUsefulVolumeMounts(path string) bool {
@@ -621,13 +732,14 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "o":
 		// Open selected entry
+		openCmd := getOpenCommand()
 		if m.showLargeFiles {
 			if len(m.largeFiles) > 0 {
 				selected := m.largeFiles[m.largeSelected]
 				go func(path string) {
 					ctx, cancel := context.WithTimeout(context.Background(), openCommandTimeout)
 					defer cancel()
-					_ = exec.CommandContext(ctx, "open", path).Run()
+					_ = exec.CommandContext(ctx, openCmd, path).Run()
 				}(selected.Path)
 				m.status = fmt.Sprintf("Opening %s...", selected.Name)
 			}
@@ -636,30 +748,46 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			go func(path string) {
 				ctx, cancel := context.WithTimeout(context.Background(), openCommandTimeout)
 				defer cancel()
-				_ = exec.CommandContext(ctx, "open", path).Run()
+				_ = exec.CommandContext(ctx, openCmd, path).Run()
 			}(selected.Path)
 			m.status = fmt.Sprintf("Opening %s...", selected.Name)
 		}
 	case "f", "F":
-		// Reveal selected entry in Finder
+		// Reveal selected entry in file manager
+		revealCmd, revealArgs := getRevealCommand()
+		fileManager := getFileManagerName()
 		if m.showLargeFiles {
 			if len(m.largeFiles) > 0 {
 				selected := m.largeFiles[m.largeSelected]
 				go func(path string) {
 					ctx, cancel := context.WithTimeout(context.Background(), openCommandTimeout)
 					defer cancel()
-					_ = exec.CommandContext(ctx, "open", "-R", path).Run()
+					if revealArgs != nil {
+						args := append(revealArgs, path)
+						_ = exec.CommandContext(ctx, revealCmd, args...).Run()
+					} else {
+						// Fallback: open parent directory
+						parentDir := filepath.Dir(path)
+						_ = exec.CommandContext(ctx, revealCmd, parentDir).Run()
+					}
 				}(selected.Path)
-				m.status = fmt.Sprintf("Revealing %s in Finder...", selected.Name)
+				m.status = fmt.Sprintf("Revealing %s in %s...", selected.Name, fileManager)
 			}
 		} else if len(m.entries) > 0 {
 			selected := m.entries[m.selected]
 			go func(path string) {
 				ctx, cancel := context.WithTimeout(context.Background(), openCommandTimeout)
 				defer cancel()
-				_ = exec.CommandContext(ctx, "open", "-R", path).Run()
+				if revealArgs != nil {
+					args := append(revealArgs, path)
+					_ = exec.CommandContext(ctx, revealCmd, args...).Run()
+				} else {
+					// Fallback: open parent directory
+					parentDir := filepath.Dir(path)
+					_ = exec.CommandContext(ctx, revealCmd, parentDir).Run()
+				}
 			}(selected.Path)
-			m.status = fmt.Sprintf("Revealing %s in Finder...", selected.Name)
+			m.status = fmt.Sprintf("Revealing %s in %s...", selected.Name, fileManager)
 		}
 	case "delete", "backspace":
 		// Delete selected file or directory
@@ -1204,6 +1332,6 @@ func scanOverviewPathCmd(path string, index int) tea.Cmd {
 // Uses -s to summarize total size including all subdirectories.
 
 // getDirectoryLogicalSize walks the directory tree and sums file sizes to estimate
-// the logical (Finder-style) usage.
+// the logical (displayed) size usage.
 
 // Persistent cache functions

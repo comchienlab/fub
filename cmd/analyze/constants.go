@@ -129,6 +129,17 @@ var foldDirs = map[string]bool{
 	// iCloud
 	"Mobile Documents": true,
 
+	// Linux/Ubuntu specific
+	".gvfs":        true, // GNOME virtual filesystem
+	".dbus":        true, // D-Bus session data
+	".thumbnails":  true, // Old thumbnail cache
+	"thumbnails":   true, // In ~/.cache/thumbnails
+	".mozilla":     true, // Firefox cache
+	".thunderbird": true, // Thunderbird email
+	".wine":        true, // Wine Windows emulator
+	"snap":         true, // User snap data (in ~)
+	".var":         true, // Flatpak app data (~/.var/app)
+
 	// Docker & Containers
 	".docker":     true,
 	".containerd": true,
@@ -159,22 +170,35 @@ var foldDirs = map[string]bool{
 }
 
 var skipSystemDirs = map[string]bool{
-	"dev":                     true,
-	"tmp":                     true,
-	"private":                 true,
-	"cores":                   true,
-	"net":                     true,
-	"home":                    true,
-	"System":                  true,
-	"sbin":                    true,
-	"bin":                     true,
-	"etc":                     true,
-	"var":                     true,
-	".vol":                    true,
+	"dev":     true,
+	"tmp":     true,
+	"private": true,
+	"cores":   true,
+	"net":     true,
+	"home":    true,
+	"System":  true,
+	"sbin":    true,
+	"bin":     true,
+	"etc":     true,
+	"var":     true,
+	".vol":    true,
+
+	// macOS system directories
 	".Spotlight-V100":         true,
 	".fseventsd":              true,
 	".DocumentRevisions-V100": true,
 	".TemporaryItems":         true,
+
+	// Linux system directories
+	"proc":       true, // Pseudo-filesystem (kernel interface)
+	"sys":        true, // Kernel interface
+	"run":        true, // Runtime data
+	"boot":       true, // Kernel/bootloader
+	"lost+found": true, // ext4 recovery
+	"snap":       true, // Snap mounts (in /)
+	"media":      true, // Removable media
+	"mnt":        true, // Mount points
+	"srv":        true, // Service data
 }
 
 var skipExtensions = map[string]bool{
