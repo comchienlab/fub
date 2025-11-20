@@ -1,0 +1,313 @@
+#!/bin/bash
+# lib/package_managers.sh - Multi-package-manager abstraction for Ubuntu
+# Provides unified interface for APT, Snap, Flatpak, and AppImage
+
+# Prevent multiple sourcing
+if [[ -n "${FUB_PACKAGE_MANAGERS_LOADED:-}" ]]; then
+    return 0
+fi
+readonly FUB_PACKAGE_MANAGERS_LOADED=1
+
+# ============================================================================
+# Package Manager Detection
+# ============================================================================
+
+detect_package_managers() {
+    local -a managers=()
+    command -v apt &>/dev/null && managers+=("apt")
+    command -v snap &>/dev/null && managers+=("snap")
+    command -v flatpak &>/dev/null && managers+=("flatpak")
+    # AppImage is always available (it's just executable files)
+    managers+=("appimage")
+    printf '%s\n' "${managers[@]}"
+}
+
+# ============================================================================
+# APT/DPKG Functions
+# ============================================================================
+
+scan_apt_packages() {
+    dpkg -l | awk '/^ii/ {print $2 "\t" $3 "\tapt"}'
+}
+
+get_apt_package_info() {
+    local pkg="$1"
+    apt-cache show "$pkg" 2>/dev/null | head -20
+}
+
+get_apt_package_size() {
+    local pkg="$1"
+    dpkg-query -W -f='${Installed-Size}' "$pkg" 2>/dev/null || echo "0"
+}
+
+uninstall_apt_package() {
+    local pkg="$1"
+    local purge="${2:-true}"
+
+    if [[ "$purge" == "true" ]]; then
+        sudo apt-get remove --purge -y "$pkg" 2>&1
+    else
+        sudo apt-get remove -y "$pkg" 2>&1
+    fi
+}
+
+is_apt_package_installed() {
+    local pkg="$1"
+    dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"
+}
+
+# ============================================================================
+# Snap Functions
+# ============================================================================
+
+scan_snap_packages() {
+    if ! command -v snap &>/dev/null; then
+        return 0
+    fi
+    snap list --color=never 2>/dev/null | tail -n +2 | awk '{print $1 "\t" $2 "\tsnap"}'
+}
+
+get_snap_package_info() {
+    local pkg="$1"
+    snap info "$pkg" 2>/dev/null | head -20
+}
+
+get_snap_package_size() {
+    local pkg="$1"
+    # Snap doesn't provide easy size info, estimate from directory
+    if [[ -d "/snap/$pkg" ]]; then
+        du -sb "/snap/$pkg" 2>/dev/null | awk '{print int($1/1024)}'
+    else
+        echo "0"
+    fi
+}
+
+uninstall_snap_package() {
+    local pkg="$1"
+    sudo snap remove "$pkg" 2>&1
+}
+
+is_snap_package_installed() {
+    local pkg="$1"
+    snap list "$pkg" &>/dev/null
+}
+
+# ============================================================================
+# Flatpak Functions
+# ============================================================================
+
+scan_flatpak_packages() {
+    if ! command -v flatpak &>/dev/null; then
+        return 0
+    fi
+    flatpak list --app --columns=application,name,version 2>/dev/null | tail -n +1 | \
+        awk -F'\t' '{print $1 "\t" $2 "\tflatpak"}'
+}
+
+get_flatpak_package_info() {
+    local pkg="$1"
+    flatpak info "$pkg" 2>/dev/null | head -20
+}
+
+get_flatpak_package_size() {
+    local pkg="$1"
+    flatpak info "$pkg" 2>/dev/null | grep "Installed size:" | awk '{print $3}' | numfmt --from=iec-i --to-unit=K 2>/dev/null || echo "0"
+}
+
+uninstall_flatpak_package() {
+    local pkg="$1"
+    flatpak uninstall -y "$pkg" 2>&1
+}
+
+is_flatpak_package_installed() {
+    local pkg="$1"
+    flatpak list | grep -q "$pkg"
+}
+
+# ============================================================================
+# AppImage Functions
+# ============================================================================
+
+scan_appimage_files() {
+    local -a search_paths=(
+        "$HOME/Applications"
+        "$HOME/.local/bin"
+        "$HOME/Downloads"
+        "$HOME"
+    )
+
+    for path in "${search_paths[@]}"; do
+        if [[ -d "$path" ]]; then
+            find "$path" -maxdepth 2 -name "*.AppImage" -type f 2>/dev/null | while read -r appimage; do
+                local name=$(basename "$appimage" .AppImage)
+                local size=$(stat -c%s "$appimage" 2>/dev/null || echo "0")
+                local size_kb=$((size / 1024))
+                echo "$appimage	$name	appimage	$size_kb"
+            done
+        fi
+    done
+}
+
+get_appimage_info() {
+    local appimage_path="$1"
+    if [[ -f "$appimage_path" ]]; then
+        echo "File: $appimage_path"
+        echo "Size: $(du -h "$appimage_path" | awk '{print $1}')"
+        echo "Permissions: $(stat -c%a "$appimage_path")"
+        echo "Modified: $(stat -c%y "$appimage_path")"
+    fi
+}
+
+uninstall_appimage() {
+    local appimage_path="$1"
+    rm -f "$appimage_path" 2>&1
+    # Also remove associated .desktop file if exists
+    local name=$(basename "$appimage_path" .AppImage)
+    rm -f "$HOME/.local/share/applications/$name.desktop" 2>/dev/null || true
+}
+
+is_appimage_file() {
+    local path="$1"
+    [[ -f "$path" && "$path" == *.AppImage ]]
+}
+
+# ============================================================================
+# Unified Package Operations
+# ============================================================================
+
+# Get package type
+get_package_type() {
+    local pkg="$1"
+
+    # Check if it's a file path (AppImage)
+    if [[ -f "$pkg" && "$pkg" == *.AppImage ]]; then
+        echo "appimage"
+        return 0
+    fi
+
+    # Check APT
+    if is_apt_package_installed "$pkg"; then
+        echo "apt"
+        return 0
+    fi
+
+    # Check Snap
+    if command -v snap &>/dev/null && is_snap_package_installed "$pkg"; then
+        echo "snap"
+        return 0
+    fi
+
+    # Check Flatpak
+    if command -v flatpak &>/dev/null && is_flatpak_package_installed "$pkg"; then
+        echo "flatpak"
+        return 0
+    fi
+
+    echo "unknown"
+    return 1
+}
+
+# Unified package listing
+list_all_packages() {
+    echo "=== APT Packages ==="
+    scan_apt_packages
+
+    echo ""
+    echo "=== Snap Packages ==="
+    scan_snap_packages
+
+    echo ""
+    echo "=== Flatpak Packages ==="
+    scan_flatpak_packages
+
+    echo ""
+    echo "=== AppImage Files ==="
+    scan_appimage_files
+}
+
+# Unified uninstall
+uninstall_package() {
+    local pkg="$1"
+    local type="${2:-$(get_package_type "$pkg")}"
+    local purge="${3:-true}"
+
+    case "$type" in
+        apt)
+            uninstall_apt_package "$pkg" "$purge"
+            ;;
+        snap)
+            uninstall_snap_package "$pkg"
+            ;;
+        flatpak)
+            uninstall_flatpak_package "$pkg"
+            ;;
+        appimage)
+            uninstall_appimage "$pkg"
+            ;;
+        *)
+            echo "Error: Unknown package type for: $pkg" >&2
+            return 1
+            ;;
+    esac
+}
+
+# Get package info
+get_package_info() {
+    local pkg="$1"
+    local type="${2:-$(get_package_type "$pkg")}"
+
+    case "$type" in
+        apt)
+            get_apt_package_info "$pkg"
+            ;;
+        snap)
+            get_snap_package_info "$pkg"
+            ;;
+        flatpak)
+            get_flatpak_package_info "$pkg"
+            ;;
+        appimage)
+            get_appimage_info "$pkg"
+            ;;
+        *)
+            echo "Error: Unknown package type for: $pkg" >&2
+            return 1
+            ;;
+    esac
+}
+
+# Get package size in KB
+get_package_size() {
+    local pkg="$1"
+    local type="${2:-$(get_package_type "$pkg")}"
+
+    case "$type" in
+        apt)
+            get_apt_package_size "$pkg"
+            ;;
+        snap)
+            get_snap_package_size "$pkg"
+            ;;
+        flatpak)
+            get_flatpak_package_size "$pkg"
+            ;;
+        appimage)
+            if [[ -f "$pkg" ]]; then
+                stat -c%s "$pkg" 2>/dev/null | awk '{print int($1/1024)}'
+            else
+                echo "0"
+            fi
+            ;;
+        *)
+            echo "0"
+            ;;
+    esac
+}
+
+# Export functions
+export -f detect_package_managers
+export -f scan_apt_packages get_apt_package_info uninstall_apt_package is_apt_package_installed
+export -f scan_snap_packages get_snap_package_info uninstall_snap_package is_snap_package_installed
+export -f scan_flatpak_packages get_flatpak_package_info uninstall_flatpak_package is_flatpak_package_installed
+export -f scan_appimage_files get_appimage_info uninstall_appimage is_appimage_file
+export -f get_package_type list_all_packages uninstall_package get_package_info get_package_size
