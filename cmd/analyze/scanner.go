@@ -168,9 +168,9 @@ func scanPathConcurrent(root string, filesScanned, dirsScanned, bytesScanned *in
 		entries = entries[:maxEntries]
 	}
 
-	// Try to use Spotlight for faster large file discovery
-	if spotlightFiles := findLargeFilesWithSpotlight(root, minLargeFileSize); len(spotlightFiles) > 0 {
-		largeFiles = spotlightFiles
+	// Try to use fast file discovery (Spotlight on macOS, locate/find on Linux)
+	if quickFiles := findLargeFilesQuickly(root, minLargeFileSize); len(quickFiles) > 0 {
+		largeFiles = quickFiles
 	} else {
 		// Sort and trim large files collected from scanning
 		sort.Slice(largeFiles, func(i, j int) bool {
@@ -285,7 +285,21 @@ func calculateDirSizeFast(root string, filesScanned, dirsScanned, bytesScanned *
 	return total
 }
 
-// Use Spotlight (mdfind) to quickly find large files in a directory
+// Use platform-specific fast file discovery to quickly find large files
+// macOS: Uses Spotlight (mdfind)
+// Linux: Uses locate (if available) or optimized find command
+func findLargeFilesQuickly(root string, minSize int64) []fileEntry {
+	if runtime.GOOS == "darwin" {
+		return findLargeFilesWithSpotlight(root, minSize)
+	}
+	// Linux: try locate first, then find
+	if files := findLargeFilesWithLocate(root, minSize); len(files) > 0 {
+		return files
+	}
+	return findLargeFilesWithFind(root, minSize)
+}
+
+// findLargeFilesWithSpotlight uses macOS Spotlight (mdfind) for fast discovery
 func findLargeFilesWithSpotlight(root string, minSize int64) []fileEntry {
 	// mdfind query: files >= minSize in the specified directory
 	query := fmt.Sprintf("kMDItemFSSize >= %d", minSize)
@@ -300,6 +314,54 @@ func findLargeFilesWithSpotlight(root string, minSize int64) []fileEntry {
 		return nil
 	}
 
+	return parseFileList(output, minSize)
+}
+
+// findLargeFilesWithLocate uses locate (mlocate/plocate) for fast discovery on Linux
+func findLargeFilesWithLocate(root string, minSize int64) []fileEntry {
+	// Check if locate is available
+	if _, err := exec.LookPath("locate"); err != nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), mdlsTimeout)
+	defer cancel()
+
+	// Use locate to find all files under root
+	// Note: locate uses a database that may not be up-to-date
+	cmd := exec.CommandContext(ctx, "locate", "-e", "-r", "^"+root)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	return parseFileList(output, minSize)
+}
+
+// findLargeFilesWithFind uses the find command for discovery on Linux
+func findLargeFilesWithFind(root string, minSize int64) []fileEntry {
+	ctx, cancel := context.WithTimeout(context.Background(), mdlsTimeout*2) // find is slower
+	defer cancel()
+
+	// Convert minSize from bytes to MB for find's -size parameter
+	minSizeMB := minSize / (1024 * 1024)
+	if minSizeMB < 1 {
+		minSizeMB = 1
+	}
+	sizeArg := fmt.Sprintf("+%dM", minSizeMB)
+
+	// Use find with size filter and printf for consistent output
+	cmd := exec.CommandContext(ctx, "find", root, "-type", "f", "-size", sizeArg, "-print")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	return parseFileList(output, minSize)
+}
+
+// parseFileList processes a list of file paths and returns fileEntry objects
+func parseFileList(output []byte, minSize int64) []fileEntry {
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	var files []fileEntry
 
@@ -331,6 +393,12 @@ func findLargeFilesWithSpotlight(root string, minSize int64) []fileEntry {
 
 		// Get actual disk usage for sparse files and cloud files
 		actualSize := getActualFileSize(line, info)
+
+		// Verify size meets minimum requirement
+		if actualSize < minSize {
+			continue
+		}
+
 		files = append(files, fileEntry{
 			Name: filepath.Base(line),
 			Path: line,
