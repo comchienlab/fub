@@ -768,6 +768,66 @@ perform_cleanup() {
             log_success "Systemd core dumps"
         fi
 
+        # 8. Orphaned packages cleanup (Enhanced Debloat)
+        if command -v apt-get &>/dev/null; then
+            if [[ "$DRY_RUN" != "true" ]]; then
+                # Remove orphaned packages
+                local orphans_output=$(sudo apt-get autoremove -y 2>&1)
+                if echo "$orphans_output" | grep -q "packages will be removed"; then
+                    log_success "Orphaned packages removed"
+                fi
+            else
+                # Check for orphaned packages
+                local orphaned=$(apt-mark showauto 2>/dev/null | \
+                    xargs apt-cache rdepends --installed 2>/dev/null | \
+                    grep -v "^  " | grep -v "^Reverse" | wc -l)
+                if [[ $orphaned -gt 0 ]]; then
+                    log_success "Would remove orphaned packages [DRY RUN]"
+                fi
+            fi
+        fi
+
+        # 9. Deborphan cleanup (if installed)
+        if command -v deborphan &>/dev/null; then
+            if [[ "$DRY_RUN" != "true" ]]; then
+                local orphan_list=$(deborphan)
+                if [[ -n "$orphan_list" ]]; then
+                    echo "$orphan_list" | sudo xargs apt-get -y purge &>/dev/null || true
+                    log_success "Deborphan packages removed"
+                fi
+            else
+                local orphan_count=$(deborphan | wc -l)
+                if [[ $orphan_count -gt 0 ]]; then
+                    log_success "Would remove $orphan_count deborphan package(s) [DRY RUN]"
+                fi
+            fi
+        fi
+
+        # 10. Optional bloatware removal (gnome-games, gnome-software)
+        # Note: Only removes if explicitly confirmed
+        if [[ "${FUB_REMOVE_BLOAT:-}" == "true" ]]; then
+            local bloat_packages=("gnome-games" "gnome-software" "gnome-mahjongg" "gnome-mines" "gnome-sudoku" "aisleriot")
+            if [[ "$DRY_RUN" != "true" ]]; then
+                for pkg in "${bloat_packages[@]}"; do
+                    if dpkg -l | grep -q "^ii.*$pkg"; then
+                        sudo apt-get purge -y "$pkg" &>/dev/null || true
+                    fi
+                done
+                log_success "Bloatware packages removed"
+            else
+                local bloat_count=0
+                for pkg in "${bloat_packages[@]}"; do
+                    if dpkg -l | grep -q "^ii.*$pkg"; then
+                        ((bloat_count++))
+                    fi
+                done
+                if [[ $bloat_count -gt 0 ]]; then
+                    log_success "Would remove $bloat_count bloatware package(s) [DRY RUN]"
+                    echo -e "    ${GRAY}Set FUB_REMOVE_BLOAT=true to enable bloatware removal${NC}"
+                fi
+            fi
+        fi
+
         end_section
     fi
 

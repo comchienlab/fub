@@ -574,6 +574,73 @@ main() {
         done
     fi
 
+    # ===== Additional Ubuntu Optimizations =====
+
+    # Performance tuning (disable tracker, hibernation)
+    echo ""
+    echo -e "${BLUE}${ICON_ARROW}${NC} Performance tuning..."
+
+    # Disable GNOME Tracker (file indexing)
+    if systemctl --user is-active --quiet tracker-miner-fs.service 2>/dev/null; then
+        echo -ne "  ${GRAY}→${NC} Disable GNOME Tracker (file indexing)..."
+        systemctl --user mask tracker-store.service tracker-miner-fs.service tracker-miner-rss.service tracker-extract.service tracker-miner-apps.service tracker-writeback.service &>/dev/null || true
+        systemctl --user stop tracker-store.service tracker-miner-fs.service tracker-miner-rss.service tracker-extract.service tracker-miner-apps.service tracker-writeback.service &>/dev/null || true
+        echo -e " ${GREEN}✓${NC}"
+    fi
+
+    # Disable hibernation (faster boot)
+    if [[ -f /etc/systemd/logind.conf ]]; then
+        if ! grep -q "HandleLidSwitch=suspend" /etc/systemd/logind.conf 2>/dev/null; then
+            echo -ne "  ${GRAY}→${NC} Disable hibernation for faster boot..."
+            sudo mkdir -p /etc/systemd/logind.conf.d 2>/dev/null || true
+            echo -e "[Login]\nHandleLidSwitch=suspend\nHandleLidSwitchDocked=ignore" | sudo tee /etc/systemd/logind.conf.d/fub-performance.conf &>/dev/null || true
+            echo -e " ${GREEN}✓${NC}"
+        fi
+    fi
+
+    # Reduce swappiness for better performance (if not already set)
+    local current_swappiness=$(cat /proc/sys/vm/swappiness 2>/dev/null || echo "60")
+    if [[ $current_swappiness -gt 10 ]]; then
+        echo -ne "  ${GRAY}→${NC} Reduce swappiness to 10 (better performance)..."
+        echo "vm.swappiness=10" | sudo tee /etc/sysctl.d/99-fub-swappiness.conf &>/dev/null || true
+        sudo sysctl vm.swappiness=10 &>/dev/null || true
+        echo -e " ${GREEN}✓${NC}"
+    fi
+
+    # Nerd Fonts installer (optional)
+    if [[ "${FUB_INSTALL_NERDFONTS:-}" == "true" ]]; then
+        echo ""
+        echo -e "${BLUE}${ICON_ARROW}${NC} Installing Nerd Fonts..."
+
+        local fonts_dir="$HOME/.local/share/fonts"
+        mkdir -p "$fonts_dir"
+
+        # Download and install popular Nerd Fonts
+        local nerd_fonts=("JetBrainsMono" "FiraCode" "Hack" "Meslo")
+
+        for font in "${nerd_fonts[@]}"; do
+            if [[ ! -d "$fonts_dir/$font" ]]; then
+                echo -ne "  ${GRAY}→${NC} Downloading $font Nerd Font..."
+                local font_url="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/${font}.zip"
+                local temp_zip="/tmp/${font}.zip"
+
+                if curl -fsSL "$font_url" -o "$temp_zip" 2>/dev/null; then
+                    mkdir -p "$fonts_dir/$font"
+                    unzip -q "$temp_zip" -d "$fonts_dir/$font" 2>/dev/null || true
+                    rm -f "$temp_zip"
+                    echo -e " ${GREEN}✓${NC}"
+                else
+                    echo -e " ${YELLOW}skipped${NC}"
+                fi
+            fi
+        done
+
+        # Update font cache
+        echo -ne "  ${GRAY}→${NC} Updating font cache..."
+        fc-cache -fv &>/dev/null || true
+        echo -e " ${GREEN}✓${NC}"
+    fi
+
     # Show login item reminder at the end of optimization log
     local -a login_items_list=()
     while IFS= read -r login_item; do
