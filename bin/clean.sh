@@ -828,6 +828,94 @@ perform_cleanup() {
             fi
         fi
 
+        # 11. Privacy & telemetry cleanup
+        # Ubuntu collects various telemetry data - remove if privacy is a concern
+        if [[ "${FUB_REMOVE_TELEMETRY:-}" == "true" ]]; then
+            local telemetry_packages=("apport" "whoopsie" "ubuntu-report" "popularity-contest")
+            if [[ "$DRY_RUN" != "true" ]]; then
+                local removed_count=0
+                for pkg in "${telemetry_packages[@]}"; do
+                    if dpkg -l 2>/dev/null | grep -q "^ii.*$pkg"; then
+                        if sudo apt-get purge -y "$pkg" &>/dev/null; then
+                            ((removed_count++))
+                        fi
+                    fi
+                done
+
+                # Disable error reporting
+                if [[ -f /etc/default/apport ]]; then
+                    sudo sed -i 's/enabled=1/enabled=0/' /etc/default/apport 2>/dev/null || true
+                fi
+
+                # Stop and disable whoopsie (error reporting daemon)
+                if systemctl is-active --quiet whoopsie.service 2>/dev/null; then
+                    sudo systemctl stop whoopsie.service &>/dev/null || true
+                    sudo systemctl disable whoopsie.service &>/dev/null || true
+                fi
+
+                if [[ $removed_count -gt 0 ]]; then
+                    log_success "Removed $removed_count telemetry package(s)"
+                else
+                    log_success "Telemetry services disabled"
+                fi
+            else
+                local telemetry_count=0
+                for pkg in "${telemetry_packages[@]}"; do
+                    if dpkg -l 2>/dev/null | grep -q "^ii.*$pkg"; then
+                        ((telemetry_count++))
+                    fi
+                done
+                if [[ $telemetry_count -gt 0 ]] || [[ -f /etc/default/apport ]]; then
+                    log_success "Would remove $telemetry_count telemetry package(s) [DRY RUN]"
+                    echo -e "    ${GRAY}Set FUB_REMOVE_TELEMETRY=true to disable Ubuntu telemetry${NC}"
+                fi
+            fi
+        fi
+
+        # 12. Clear privacy logs and reports
+        if [[ "${FUB_CLEAR_PRIVACY_LOGS:-true}" == "true" ]]; then
+            local privacy_cleaned=0
+
+            # Clear crash reports
+            if [[ -d "$HOME/.local/share/apport" ]]; then
+                local apport_size=$(du -sk "$HOME/.local/share/apport" 2>/dev/null | awk '{print $1}' || echo "0")
+                if [[ $apport_size -gt 0 ]]; then
+                    if [[ "$DRY_RUN" != "true" ]]; then
+                        rm -rf "$HOME/.local/share/apport"/* 2>/dev/null || true
+                        mkdir -p "$HOME/.local/share/apport"
+                    fi
+                    ((privacy_cleaned++))
+                fi
+            fi
+
+            # Clear whoopsie cache
+            if [[ -d "$HOME/.cache/whoopsie" ]]; then
+                local whoopsie_size=$(du -sk "$HOME/.cache/whoopsie" 2>/dev/null | awk '{print $1}' || echo "0")
+                if [[ $whoopsie_size -gt 0 ]]; then
+                    if [[ "$DRY_RUN" != "true" ]]; then
+                        rm -rf "$HOME/.cache/whoopsie"/* 2>/dev/null || true
+                    fi
+                    ((privacy_cleaned++))
+                fi
+            fi
+
+            # Clear recently-used file tracking
+            if [[ -f "$HOME/.local/share/recently-used.xbel" ]]; then
+                if [[ "$DRY_RUN" != "true" ]]; then
+                    rm -f "$HOME/.local/share/recently-used.xbel" 2>/dev/null || true
+                fi
+                ((privacy_cleaned++))
+            fi
+
+            if [[ $privacy_cleaned -gt 0 ]]; then
+                if [[ "$DRY_RUN" != "true" ]]; then
+                    log_success "Cleared privacy logs and crash reports"
+                else
+                    log_success "Would clear privacy logs [DRY RUN]"
+                fi
+            fi
+        fi
+
         end_section
     fi
 

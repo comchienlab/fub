@@ -14,6 +14,7 @@ readonly FUB_COMMON_LOADED=1
 readonly ESC=$'\033'
 readonly GREEN="${ESC}[0;32m"
 readonly BLUE="${ESC}[0;34m"
+readonly CYAN="${ESC}[0;36m"
 readonly YELLOW="${ESC}[1;33m"
 readonly PURPLE="${ESC}[0;35m"
 readonly RED="${ESC}[0;31m"

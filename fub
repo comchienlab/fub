@@ -140,6 +140,8 @@ show_help() {
     printf "  %s%-28s%s %s\n" "$GREEN" "fub optimize" "$NC" "System health check & optimization"
     printf "  %s%-28s%s %s\n" "$GREEN" "fub analyze" "$NC" "Interactive disk space explorer"
     printf "  %s%-28s%s %s\n" "$GREEN" "fub swap" "$NC" "Manage swap file (create/remove)"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub security" "$NC" "Setup UFW firewall & Fail2Ban"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub startup" "$NC" "Manage startup applications"
     printf "  %s%-28s%s %s\n" "$GREEN" "fub touchid" "$NC" "Configure Touch ID for sudo"
     printf "  %s%-28s%s %s\n" "$GREEN" "fub update" "$NC" "Update Fub to the latest version"
     printf "  %s%-28s%s %s\n" "$GREEN" "fub remove" "$NC" "Remove Fub from the system"
@@ -475,6 +477,8 @@ show_main_menu() {
     printf '\r\033[2K%s\n' "$(show_menu_option 3 "Optimize System - System health & tuning" "$([[ $selected -eq 3 ]] && echo true || echo false)")"
     printf '\r\033[2K%s\n' "$(show_menu_option 4 "Analyze Disk - Interactive space explorer" "$([[ $selected -eq 4 ]] && echo true || echo false)")"
     printf '\r\033[2K%s\n' "$(show_menu_option 5 "Swap Manager - Create/manage swap file" "$([[ $selected -eq 5 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 6 "Security - UFW firewall & Fail2Ban setup" "$([[ $selected -eq 6 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 7 "Startup Apps - Manage auto-start programs" "$([[ $selected -eq 7 ]] && echo true || echo false)")"
 
     if [[ -t 0 ]]; then
         printf '\r\033[2K\n'
@@ -541,7 +545,7 @@ interactive_main_menu() {
 
         case "$key" in
             "UP") ((current_option > 1)) && ((current_option--)) ;;
-            "DOWN") ((current_option < 5)) && ((current_option++)) ;;
+            "DOWN") ((current_option < 7)) && ((current_option++)) ;;
             "ENTER")
                 show_cursor
                 case $current_option in
@@ -550,6 +554,8 @@ interactive_main_menu() {
                     3) exec "$SCRIPT_DIR/bin/optimize.sh" ;;
                     4) exec "$SCRIPT_DIR/bin/analyze.sh" ;;
                     5) exec "$SCRIPT_DIR/bin/swap.sh" ;;
+                    6) exec "$SCRIPT_DIR/bin/security.sh" ;;
+                    7) exec "$SCRIPT_DIR/bin/startup.sh" ;;
                 esac
                 ;;
             "CHAR:1")
@@ -571,6 +577,14 @@ interactive_main_menu() {
             "CHAR:5")
                 show_cursor
                 exec "$SCRIPT_DIR/bin/swap.sh"
+                ;;
+            "CHAR:6")
+                show_cursor
+                exec "$SCRIPT_DIR/bin/security.sh"
+                ;;
+            "CHAR:7")
+                show_cursor
+                exec "$SCRIPT_DIR/bin/startup.sh"
                 ;;
             "HELP")
                 show_cursor
@@ -599,6 +613,12 @@ main() {
             ;;
         "swap")
             exec "$SCRIPT_DIR/bin/swap.sh" "${@:2}"
+            ;;
+        "security")
+            exec "$SCRIPT_DIR/bin/security.sh" "${@:2}"
+            ;;
+        "startup")
+            exec "$SCRIPT_DIR/bin/startup.sh" "${@:2}"
             ;;
         "touchid")
             exec "$SCRIPT_DIR/bin/touchid.sh" "${@:2}"

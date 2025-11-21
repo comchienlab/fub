@@ -641,6 +641,85 @@ main() {
         echo -e " ${GREEN}✓${NC}"
     fi
 
+    # TLP power management (optional - for laptops)
+    if [[ "${FUB_INSTALL_TLP:-}" == "true" ]]; then
+        echo ""
+        echo -e "${BLUE}${ICON_ARROW}${NC} Setting up TLP power management..."
+
+        # Check if running on a laptop (has battery)
+        if [[ ! -d /sys/class/power_supply/BAT* ]] && [[ ! -d /sys/class/power_supply/battery ]]; then
+            echo -e "  ${YELLOW}!${NC} No battery detected - TLP is designed for laptops"
+            echo -e "  ${GRAY}Skipping TLP installation${NC}"
+        else
+            # Install TLP
+            if ! command -v tlp &>/dev/null; then
+                echo -ne "  ${GRAY}→${NC} Installing TLP..."
+                if sudo apt-get install -y tlp tlp-rdw &>/dev/null; then
+                    echo -e " ${GREEN}✓${NC}"
+                else
+                    echo -e " ${RED}✗ Failed${NC}"
+                fi
+            else
+                echo -e "  ${GREEN}✓${NC} TLP already installed"
+            fi
+
+            # Remove conflicting power management tools
+            if dpkg -l | grep -q "^ii.*laptop-mode-tools"; then
+                echo -ne "  ${GRAY}→${NC} Removing conflicting laptop-mode-tools..."
+                sudo apt-get remove -y laptop-mode-tools &>/dev/null || true
+                echo -e " ${GREEN}✓${NC}"
+            fi
+
+            # Start and enable TLP
+            if command -v tlp &>/dev/null; then
+                echo -ne "  ${GRAY}→${NC} Starting TLP service..."
+                sudo systemctl enable tlp.service &>/dev/null || true
+                sudo systemctl start tlp.service &>/dev/null || true
+                echo -e " ${GREEN}✓${NC}"
+
+                # Apply settings immediately
+                echo -ne "  ${GRAY}→${NC} Applying TLP settings..."
+                sudo tlp start &>/dev/null || true
+                echo -e " ${GREEN}✓${NC}"
+
+                echo -e "  ${GREEN}✓${NC} TLP configured for optimal battery life"
+            fi
+        fi
+    fi
+
+    # auto-cpufreq power management (alternative to TLP)
+    if [[ "${FUB_INSTALL_AUTOCPUFREQ:-}" == "true" ]]; then
+        echo ""
+        echo -e "${BLUE}${ICON_ARROW}${NC} Setting up auto-cpufreq power management..."
+
+        # Check if TLP is installed (conflict)
+        if command -v tlp &>/dev/null || systemctl is-active --quiet tlp.service 2>/dev/null; then
+            echo -e "  ${YELLOW}!${NC} TLP is installed - auto-cpufreq conflicts with TLP"
+            echo -e "  ${GRAY}Please remove TLP first or use TLP instead${NC}"
+        else
+            # Install auto-cpufreq via snap (recommended method)
+            if ! command -v auto-cpufreq &>/dev/null; then
+                echo -ne "  ${GRAY}→${NC} Installing auto-cpufreq..."
+                if sudo snap install auto-cpufreq &>/dev/null; then
+                    echo -e " ${GREEN}✓${NC}"
+                else
+                    echo -e " ${RED}✗ Failed${NC}"
+                fi
+            else
+                echo -e "  ${GREEN}✓${NC} auto-cpufreq already installed"
+            fi
+
+            # Enable auto-cpufreq
+            if command -v auto-cpufreq &>/dev/null; then
+                echo -ne "  ${GRAY}→${NC} Installing auto-cpufreq service..."
+                sudo auto-cpufreq --install &>/dev/null || true
+                echo -e " ${GREEN}✓${NC}"
+
+                echo -e "  ${GREEN}✓${NC} auto-cpufreq configured for automatic CPU optimization"
+            fi
+        fi
+    fi
+
     # Show login item reminder at the end of optimization log
     local -a login_items_list=()
     while IFS= read -r login_item; do
