@@ -116,8 +116,110 @@ ensure_fzf() {
     return 0
 }
 
-# Scan all installed applications
+# Check if cache is valid (less than 5 minutes old)
+is_cache_valid() {
+    local cache_file="$1"
+    local max_age_seconds=300  # 5 minutes
+
+    if [[ ! -f "$cache_file" ]]; then
+        return 1
+    fi
+
+    local cache_age=$(($(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0)))
+    [[ $cache_age -lt $max_age_seconds ]]
+}
+
+# Scan all installed applications (OPTIMIZED with parallel processing and caching)
 scan_all_applications() {
+    local output_file="$1"
+    local force_refresh="${2:-false}"
+
+    # Check cache validity
+    if [[ "$force_refresh" != "true" ]] && is_cache_valid "$output_file"; then
+        local cache_age=$(($(date +%s) - $(stat -c %Y "$output_file")))
+        echo -e "${GREEN}✓${NC} Using cached package list (${cache_age}s old)"
+        return 0
+    fi
+
+    > "$output_file"
+    echo -e "${BLUE}Scanning installed applications (optimized parallel mode)...${NC}"
+
+    # Temporary files for parallel processing
+    local tmp_dir="$HOME/.cache/fub/tmp"
+    mkdir -p "$tmp_dir"
+    local apt_tmp="$tmp_dir/apt_packages.$$"
+    local snap_tmp="$tmp_dir/snap_packages.$$"
+    local flatpak_tmp="$tmp_dir/flatpak_packages.$$"
+    local appimage_tmp="$tmp_dir/appimage_files.$$"
+
+    # Launch all scans in parallel for maximum performance
+    {
+        echo -e "  ${BLUE}→${NC} APT packages..." >&2
+        scan_apt_packages_with_sizes | while IFS=$'\t' read -r pkg_name version pkg_type size_kb; do
+            if is_system_critical "$pkg_name"; then
+                continue
+            fi
+            local size_human=$(numfmt --to=iec --suffix=B --padding=7 $((size_kb * 1024)) 2>/dev/null || echo "Unknown")
+            echo "apt|$pkg_name|$version|$size_kb|$size_human"
+        done > "$apt_tmp"
+    } &
+    local apt_pid=$!
+
+    {
+        if command -v snap &>/dev/null; then
+            echo -e "  ${BLUE}→${NC} Snap packages..." >&2
+            scan_snap_packages_with_sizes | while IFS=$'\t' read -r pkg_name version pkg_type size_kb; do
+                local size_human=$(numfmt --to=iec --suffix=B --padding=7 $((size_kb * 1024)) 2>/dev/null || echo "Unknown")
+                echo "snap|$pkg_name|$version|$size_kb|$size_human"
+            done > "$snap_tmp"
+        else
+            touch "$snap_tmp"
+        fi
+    } &
+    local snap_pid=$!
+
+    {
+        if command -v flatpak &>/dev/null; then
+            echo -e "  ${BLUE}→${NC} Flatpak packages..." >&2
+            scan_flatpak_packages_with_sizes | while IFS=$'\t' read -r pkg_id pkg_name version pkg_type size_str; do
+                # Parse flatpak size
+                local size_kb=$(parse_flatpak_size "$size_str")
+                local size_human=$(numfmt --to=iec --suffix=B --padding=7 $((size_kb * 1024)) 2>/dev/null || echo "Unknown")
+                echo "flatpak|$pkg_id|$version|$size_kb|$size_human|$pkg_name"
+            done > "$flatpak_tmp"
+        else
+            touch "$flatpak_tmp"
+        fi
+    } &
+    local flatpak_pid=$!
+
+    {
+        echo -e "  ${BLUE}→${NC} AppImage files..." >&2
+        scan_appimage_files | while IFS=$'\t' read -r appimage_path pkg_name pkg_type size_kb; do
+            local size_human=$(numfmt --to=iec --suffix=B --padding=7 $((size_kb * 1024)) 2>/dev/null || echo "Unknown")
+            echo "appimage|$pkg_name|unknown|$size_kb|$size_human|$appimage_path"
+        done > "$appimage_tmp"
+    } &
+    local appimage_pid=$!
+
+    # Wait for all parallel scans to complete
+    wait $apt_pid 2>/dev/null
+    wait $snap_pid 2>/dev/null
+    wait $flatpak_pid 2>/dev/null
+    wait $appimage_pid 2>/dev/null
+
+    # Merge results
+    cat "$apt_tmp" "$snap_tmp" "$flatpak_tmp" "$appimage_tmp" > "$output_file" 2>/dev/null
+
+    # Cleanup temp files
+    rm -f "$apt_tmp" "$snap_tmp" "$flatpak_tmp" "$appimage_tmp"
+
+    local total_count=$(wc -l < "$output_file")
+    echo -e "${GREEN}✓${NC} Found $total_count applications (parallel scan complete)"
+}
+
+# Legacy scan function (kept for compatibility)
+scan_all_applications_sequential() {
     local output_file="$1"
     > "$output_file"
 
@@ -340,9 +442,13 @@ Found $total packages | ↑↓: Navigate | Tab: Toggle | Enter: Confirm | Esc: C
 
 # Main function
 main() {
-    # Check for help
-    if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
-        cat <<EOF
+    local force_refresh="false"
+
+    # Parse arguments
+    for arg in "$@"; do
+        case "$arg" in
+            --help|-h)
+                cat <<EOF
 Fub Uninstaller - Ubuntu Edition (with fzf)
 
 Interactive application uninstaller with multi-package-manager support.
@@ -360,6 +466,12 @@ Features:
   - Live preview of package details
   - Color-coded by package manager
   - Auto-installs fzf if missing
+  - OPTIMIZED: Parallel scanning & 5-minute cache
+
+Performance:
+  - Package managers scanned in parallel
+  - Batch queries for sizes (much faster)
+  - Smart caching (5-minute cache, auto-refresh)
 
 Keyboard shortcuts:
   ↑↓ / jk      Navigate list
@@ -375,18 +487,25 @@ Protected packages:
   - Data-protected packages require confirmation
 
 Usage:
-  uninstall.sh          Launch interactive uninstaller
-  uninstall.sh --help   Show this help
+  uninstall.sh               Launch interactive uninstaller
+  uninstall.sh --refresh     Force refresh package cache
+  uninstall.sh --help        Show this help
 
 EOF
-        exit 0
-    fi
+                exit 0
+                ;;
+            --refresh|-r)
+                force_refresh="true"
+                ;;
+        esac
+    done
 
     # Banner
     clear_screen
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║              Fub Uninstaller (fzf)                    ║${NC}"
     echo -e "${GREEN}║         Complete Application Removal                  ║${NC}"
+    echo -e "${GREEN}║           ${CYAN}⚡ OPTIMIZED PARALLEL MODE ⚡${GREEN}              ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════════════════════╝${NC}"
     echo ""
 
@@ -394,7 +513,7 @@ EOF
     local apps_cache="$HOME/.cache/fub/apps_list.txt"
     mkdir -p "$(dirname "$apps_cache")"
 
-    scan_all_applications "$apps_cache"
+    scan_all_applications "$apps_cache" "$force_refresh"
 
     if [[ ! -s "$apps_cache" ]]; then
         echo -e "${YELLOW}No applications found to uninstall.${NC}"
