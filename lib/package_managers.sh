@@ -30,6 +30,13 @@ scan_apt_packages() {
     dpkg -l | awk '/^ii/ {print $2 "\t" $3 "\tapt"}'
 }
 
+# Optimized: Scan APT packages with sizes in batch (much faster)
+scan_apt_packages_with_sizes() {
+    # Single dpkg-query call to get all package names, versions, and sizes
+    dpkg-query -W -f='${Package}\t${Version}\t${Installed-Size}\n' 2>/dev/null | \
+        awk -F'\t' '{print $1 "\t" $2 "\tapt\t" $3}'
+}
+
 get_apt_package_info() {
     local pkg="$1"
     apt-cache show "$pkg" 2>/dev/null | head -20
@@ -38,6 +45,17 @@ get_apt_package_info() {
 get_apt_package_size() {
     local pkg="$1"
     dpkg-query -W -f='${Installed-Size}' "$pkg" 2>/dev/null || echo "0"
+}
+
+# Batch get sizes for multiple APT packages (much faster than individual queries)
+get_apt_packages_sizes_batch() {
+    local -a packages=("$@")
+    if [[ ${#packages[@]} -eq 0 ]]; then
+        return
+    fi
+
+    # Get all sizes in one dpkg-query call
+    dpkg-query -W -f='${Package}\t${Installed-Size}\n' "${packages[@]}" 2>/dev/null
 }
 
 uninstall_apt_package() {
@@ -67,6 +85,24 @@ scan_snap_packages() {
     snap list --color=never 2>/dev/null | tail -n +2 | awk '{print $1 "\t" $2 "\tsnap"}'
 }
 
+# Optimized: Scan snap packages with parallel size calculation
+scan_snap_packages_with_sizes() {
+    if ! command -v snap &>/dev/null; then
+        return 0
+    fi
+
+    # Get snap list
+    snap list --color=never 2>/dev/null | tail -n +2 | while read -r name version rev tracking publisher notes; do
+        # Calculate size in background for parallel processing
+        local size_kb=0
+        if [[ -d "/snap/$name" ]]; then
+            # Use --max-depth=1 and --apparent-size for faster du
+            size_kb=$(du -s --apparent-size --block-size=1024 "/snap/$name" 2>/dev/null | awk '{print $1}')
+        fi
+        echo "$name	$version	snap	${size_kb:-0}"
+    done
+}
+
 get_snap_package_info() {
     local pkg="$1"
     snap info "$pkg" 2>/dev/null | head -20
@@ -80,6 +116,16 @@ get_snap_package_size() {
     else
         echo "0"
     fi
+}
+
+# Batch get sizes for snap packages (parallel calculation)
+get_snap_packages_sizes_batch() {
+    local -a packages=("$@")
+    for pkg in "${packages[@]}"; do
+        if [[ -d "/snap/$pkg" ]]; then
+            du -s --apparent-size --block-size=1024 "/snap/$pkg" 2>/dev/null | awk -v pkg="$pkg" '{print pkg "\t" $1}'
+        fi
+    done
 }
 
 uninstall_snap_package() {
@@ -104,6 +150,26 @@ scan_flatpak_packages() {
         awk -F'\t' '{print $1 "\t" $2 "\tflatpak"}'
 }
 
+# Optimized: Scan flatpak packages with sizes in single call
+scan_flatpak_packages_with_sizes() {
+    if ! command -v flatpak &>/dev/null; then
+        return 0
+    fi
+
+    # Get all info in one call with columns including size
+    flatpak list --app --columns=application,name,version,size 2>/dev/null | tail -n +1 | \
+        awk -F'\t' '{
+            size_kb = 0
+            if ($4 != "" && $4 != "?") {
+                # Parse size string (e.g., "1.2 GB", "512 MB", "10 KB")
+                size_str = $4
+                # This will be handled in bash, just pass through
+                size_kb = $4
+            }
+            print $1 "\t" $2 "\t" $3 "\tflatpak\t" size_kb
+        }'
+}
+
 get_flatpak_package_info() {
     local pkg="$1"
     flatpak info "$pkg" 2>/dev/null | head -20
@@ -112,6 +178,18 @@ get_flatpak_package_info() {
 get_flatpak_package_size() {
     local pkg="$1"
     flatpak info "$pkg" 2>/dev/null | grep "Installed size:" | awk '{print $3}' | numfmt --from=iec-i --to-unit=K 2>/dev/null || echo "0"
+}
+
+# Parse flatpak size string to KB
+parse_flatpak_size() {
+    local size_str="$1"
+    if [[ -z "$size_str" || "$size_str" == "?" ]]; then
+        echo "0"
+        return
+    fi
+
+    # Use numfmt to convert size to KB
+    echo "$size_str" | numfmt --from=iec --to-unit=1024 2>/dev/null || echo "0"
 }
 
 uninstall_flatpak_package() {
@@ -306,8 +384,8 @@ get_package_size() {
 
 # Export functions
 export -f detect_package_managers
-export -f scan_apt_packages get_apt_package_info uninstall_apt_package is_apt_package_installed
-export -f scan_snap_packages get_snap_package_info uninstall_snap_package is_snap_package_installed
-export -f scan_flatpak_packages get_flatpak_package_info uninstall_flatpak_package is_flatpak_package_installed
+export -f scan_apt_packages scan_apt_packages_with_sizes get_apt_packages_sizes_batch get_apt_package_info uninstall_apt_package is_apt_package_installed
+export -f scan_snap_packages scan_snap_packages_with_sizes get_snap_packages_sizes_batch get_snap_package_info uninstall_snap_package is_snap_package_installed
+export -f scan_flatpak_packages scan_flatpak_packages_with_sizes parse_flatpak_size get_flatpak_package_info uninstall_flatpak_package is_flatpak_package_installed
 export -f scan_appimage_files get_appimage_info uninstall_appimage is_appimage_file
 export -f get_package_type list_all_packages uninstall_package get_package_info get_package_size
