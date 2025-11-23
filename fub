@@ -137,6 +137,7 @@ show_help() {
     printf "  %s%-28s%s %s\n" "$GREEN" "fub clean --dry-run" "$NC" "Preview cleanup (no deletions)"
     printf "  %s%-28s%s %s\n" "$GREEN" "fub clean --whitelist" "$NC" "Manage protected caches"
     printf "  %s%-28s%s %s\n" "$GREEN" "fub uninstall" "$NC" "Remove applications completely"
+    printf "  %s%-28s%s %s\n" "$GREEN" "fub status" "$NC" "Real-time system health dashboard"
     printf "  %s%-28s%s %s\n" "$GREEN" "fub optimize" "$NC" "System health check & optimization"
     printf "  %s%-28s%s %s\n" "$GREEN" "fub analyze" "$NC" "Interactive disk space explorer"
     printf "  %s%-28s%s %s\n" "$GREEN" "fub swap" "$NC" "Manage swap file (create/remove)"
@@ -473,10 +474,10 @@ show_main_menu() {
     # Spacer before menu options
     printf '\r\033[2K\n'
 
-    printf '\r\033[2K%s\n' "$(show_menu_option 1 "Clean System - Remove junk files and optimize" "$([[ $selected -eq 1 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 2 "Uninstall Apps - Remove applications completely" "$([[ $selected -eq 2 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 3 "Optimize System - System health & tuning" "$([[ $selected -eq 3 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 4 "Analyze Disk - Interactive space explorer" "$([[ $selected -eq 4 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 1 "System Status - Real-time health dashboard" "$([[ $selected -eq 1 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 2 "Clean System - Remove junk files and optimize" "$([[ $selected -eq 2 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 3 "Uninstall Apps - Remove applications completely" "$([[ $selected -eq 3 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 4 "Optimize System - System health & tuning" "$([[ $selected -eq 4 ]] && echo true || echo false)")"
     printf '\r\033[2K%s\n' "$(show_menu_option 5 "More Tools - Additional utilities & setup" "$([[ $selected -eq 5 ]] && echo true || echo false)")"
 
     if [[ -t 0 ]]; then
@@ -642,28 +643,28 @@ interactive_main_menu() {
             "ENTER")
                 show_cursor
                 case $current_option in
-                    1) exec "$SCRIPT_DIR/bin/clean.sh" ;;
-                    2) exec "$SCRIPT_DIR/bin/uninstall.sh" ;;
-                    3) exec "$SCRIPT_DIR/bin/optimize.sh" ;;
-                    4) exec "$SCRIPT_DIR/bin/analyze.sh" ;;
+                    1) exec "$SCRIPT_DIR/bin/status.sh" ;;
+                    2) exec "$SCRIPT_DIR/bin/clean.sh" ;;
+                    3) exec "$SCRIPT_DIR/bin/uninstall.sh" ;;
+                    4) exec "$SCRIPT_DIR/bin/optimize.sh" ;;
                     5) show_more_tools_menu ;;
                 esac
                 ;;
             "CHAR:1")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/clean.sh"
+                exec "$SCRIPT_DIR/bin/status.sh"
                 ;;
             "CHAR:2")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/uninstall.sh"
+                exec "$SCRIPT_DIR/bin/clean.sh"
                 ;;
             "CHAR:3")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/optimize.sh"
+                exec "$SCRIPT_DIR/bin/uninstall.sh"
                 ;;
             "CHAR:4")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/analyze.sh"
+                exec "$SCRIPT_DIR/bin/optimize.sh"
                 ;;
             "CHAR:5")
                 show_cursor
@@ -682,6 +683,9 @@ interactive_main_menu() {
 
 main() {
     case "${1:-""}" in
+        "status")
+            exec "$SCRIPT_DIR/bin/status.sh" "${@:2}"
+            ;;
         "optimize")
             exec "$SCRIPT_DIR/bin/optimize.sh"
             ;;
