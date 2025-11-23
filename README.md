@@ -19,13 +19,13 @@
 **Install:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tw93/mole/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/comchienlab/fub/main/install.sh | bash
 ```
 
 Or via Homebrew:
 
 ```bash
-brew install tw93/tap/mole
+brew install comchienlab/tap/fub
 ```
 
 **Run:**
@@ -278,7 +278,7 @@ FUB_SETUP_UFW=true FUB_SETUP_FAIL2BAN=true fub security
 Launch Fub commands instantly from Raycast or Alfred:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tw93/Fub/main/scripts/setup-quick-launchers.sh | bash
+curl -fsSL https://raw.githubusercontent.com/comchienlab/fub/main/scripts/setup-quick-launchers.sh | bash
 ```
 
 Adds 4 commands: `clean`, `uninstall`, `optimize`, `analyze`. Auto-detects your terminal or set `MO_LAUNCHER_APP=<name>` to override.

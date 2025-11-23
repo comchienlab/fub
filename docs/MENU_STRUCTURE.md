@@ -6,7 +6,7 @@
  _____     _
 |  ___|   | |
 | |_ _   _| |__
-|  _| | | | '_ \   https://github.com/tw93/fub
+|  _| | | | '_ \   https://github.com/comchienlab/fub
 | | | |_| | |_) |  can dig deep to clean your Ubuntu system.
 \_|  \__,_|_.__/
 

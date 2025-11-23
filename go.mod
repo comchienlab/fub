@@ -1,4 +1,4 @@
-module github.com/tw93/fub
+module github.com/comchienlab/fub
 
 go 1.24.0
 

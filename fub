@@ -28,7 +28,7 @@ FUB_TAGLINE="can dig deep to clean your Ubuntu system."
 # Get latest version from remote repository
 get_latest_version() {
     curl -fsSL --connect-timeout 2 --max-time 3 -H "Cache-Control: no-cache" \
-        "https://raw.githubusercontent.com/tw93/fub/main/fub" 2> /dev/null |
+        "https://raw.githubusercontent.com/comchienlab/fub/main/fub" 2> /dev/null |
         grep '^VERSION=' | head -1 | sed 's/VERSION="\(.*\)"/\1/'
 }
 
@@ -74,7 +74,7 @@ show_brand_banner() {
 ${GREEN} _____     _     ${NC}
 ${GREEN}|  ___|   | |    ${NC}
 ${GREEN}| |_ _   _| |__  ${NC}
-${GREEN}|  _| | | | '_ \ ${NC}  ${BLUE}https://github.com/tw93/fub${NC}
+${GREEN}|  _| | | | '_ \ ${NC}  ${BLUE}https://github.com/comchienlab/fub${NC}
 ${GREEN}| | | |_| | |_) |${NC}  ${GREEN}${FUB_TAGLINE}${NC}
 ${GREEN}\_|  \__,_|_.__/ ${NC}
 
@@ -151,7 +151,7 @@ show_help() {
     printf "  %s%-28s%s %s\n" "$GREEN" "fub --help" "$NC" "Show this help message"
 
     printf "\n%s%s%s\n" "$BLUE" "MORE" "$NC"
-    printf "  https://github.com/tw93/fub\n\n"
+    printf "  https://github.com/comchienlab/fub\n\n"
 }
 
 # Simple update function
