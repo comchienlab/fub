@@ -474,14 +474,28 @@ show_main_menu() {
     # Spacer before menu options
     printf '\r\033[2K\n'
 
+    # System Monitoring
+    printf '\r\033[2K%s\n' "${PURPLE}📊 System Monitoring${NC}"
     printf '\r\033[2K%s\n' "$(show_menu_option 1 "System Status - Real-time health dashboard" "$([[ $selected -eq 1 ]] && echo true || echo false)")"
+    printf '\r\033[2K\n'
+
+    # System Maintenance
+    printf '\r\033[2K%s\n' "${PURPLE}🧹 System Maintenance${NC}"
     printf '\r\033[2K%s\n' "$(show_menu_option 2 "Clean System - Remove junk files and optimize" "$([[ $selected -eq 2 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 3 "Uninstall Apps - Remove applications completely" "$([[ $selected -eq 3 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 4 "Optimize System - System health & tuning" "$([[ $selected -eq 4 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 5 "Analyze Disk - Interactive space explorer" "$([[ $selected -eq 5 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 6 "Swap Manager - Create/manage swap file" "$([[ $selected -eq 6 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 7 "Security - UFW firewall & Fail2Ban setup" "$([[ $selected -eq 7 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 8 "Startup Apps - Manage auto-start programs" "$([[ $selected -eq 8 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 3 "Optimize System - System health & tuning" "$([[ $selected -eq 3 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 4 "Analyze Disk - Interactive space explorer" "$([[ $selected -eq 4 ]] && echo true || echo false)")"
+    printf '\r\033[2K\n'
+
+    # Application Management
+    printf '\r\033[2K%s\n' "${PURPLE}📦 Application Management${NC}"
+    printf '\r\033[2K%s\n' "$(show_menu_option 5 "Uninstall Apps - Remove applications completely" "$([[ $selected -eq 5 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 6 "Startup Apps - Manage auto-start programs" "$([[ $selected -eq 6 ]] && echo true || echo false)")"
+    printf '\r\033[2K\n'
+
+    # System Configuration
+    printf '\r\033[2K%s\n' "${PURPLE}⚙️  System Configuration${NC}"
+    printf '\r\033[2K%s\n' "$(show_menu_option 7 "Swap Manager - Create/manage swap file" "$([[ $selected -eq 7 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 8 "Security - UFW firewall & Fail2Ban setup" "$([[ $selected -eq 8 ]] && echo true || echo false)")"
     printf '\r\033[2K%s\n' "$(show_menu_option 9 "Nerd Fonts - Install patched developer fonts" "$([[ $selected -eq 9 ]] && echo true || echo false)")"
 
     if [[ -t 0 ]]; then
@@ -555,12 +569,12 @@ interactive_main_menu() {
                 case $current_option in
                     1) exec "$SCRIPT_DIR/bin/status.sh" ;;
                     2) exec "$SCRIPT_DIR/bin/clean.sh" ;;
-                    3) exec "$SCRIPT_DIR/bin/uninstall.sh" ;;
-                    4) exec "$SCRIPT_DIR/bin/optimize.sh" ;;
-                    5) exec "$SCRIPT_DIR/bin/analyze.sh" ;;
-                    6) exec "$SCRIPT_DIR/bin/swap.sh" ;;
-                    7) exec "$SCRIPT_DIR/bin/security.sh" ;;
-                    8) exec "$SCRIPT_DIR/bin/startup.sh" ;;
+                    3) exec "$SCRIPT_DIR/bin/optimize.sh" ;;
+                    4) exec "$SCRIPT_DIR/bin/analyze.sh" ;;
+                    5) exec "$SCRIPT_DIR/bin/uninstall.sh" ;;
+                    6) exec "$SCRIPT_DIR/bin/startup.sh" ;;
+                    7) exec "$SCRIPT_DIR/bin/swap.sh" ;;
+                    8) exec "$SCRIPT_DIR/bin/security.sh" ;;
                     9) exec "$SCRIPT_DIR/bin/nerd-fonts.sh" ;;
                 esac
                 ;;
@@ -574,27 +588,27 @@ interactive_main_menu() {
                 ;;
             "CHAR:3")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/uninstall.sh"
+                exec "$SCRIPT_DIR/bin/optimize.sh"
                 ;;
             "CHAR:4")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/optimize.sh"
+                exec "$SCRIPT_DIR/bin/analyze.sh"
                 ;;
             "CHAR:5")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/analyze.sh"
+                exec "$SCRIPT_DIR/bin/uninstall.sh"
                 ;;
             "CHAR:6")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/swap.sh"
+                exec "$SCRIPT_DIR/bin/startup.sh"
                 ;;
             "CHAR:7")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/security.sh"
+                exec "$SCRIPT_DIR/bin/swap.sh"
                 ;;
             "CHAR:8")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/startup.sh"
+                exec "$SCRIPT_DIR/bin/security.sh"
                 ;;
             "CHAR:9")
                 show_cursor
