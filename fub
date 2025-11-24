@@ -474,29 +474,11 @@ show_main_menu() {
     # Spacer before menu options
     printf '\r\033[2K\n'
 
-    # System Monitoring
-    printf '\r\033[2K%s\n' "${PURPLE}📊 System Monitoring${NC}"
     printf '\r\033[2K%s\n' "$(show_menu_option 1 "System Status - Real-time health dashboard" "$([[ $selected -eq 1 ]] && echo true || echo false)")"
-    printf '\r\033[2K\n'
-
-    # System Maintenance
-    printf '\r\033[2K%s\n' "${PURPLE}🧹 System Maintenance${NC}"
     printf '\r\033[2K%s\n' "$(show_menu_option 2 "Clean System - Remove junk files and optimize" "$([[ $selected -eq 2 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 3 "Optimize System - System health & tuning" "$([[ $selected -eq 3 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 4 "Analyze Disk - Interactive space explorer" "$([[ $selected -eq 4 ]] && echo true || echo false)")"
-    printf '\r\033[2K\n'
-
-    # Application Management
-    printf '\r\033[2K%s\n' "${PURPLE}📦 Application Management${NC}"
-    printf '\r\033[2K%s\n' "$(show_menu_option 5 "Uninstall Apps - Remove applications completely" "$([[ $selected -eq 5 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 6 "Startup Apps - Manage auto-start programs" "$([[ $selected -eq 6 ]] && echo true || echo false)")"
-    printf '\r\033[2K\n'
-
-    # System Configuration
-    printf '\r\033[2K%s\n' "${PURPLE}⚙️  System Configuration${NC}"
-    printf '\r\033[2K%s\n' "$(show_menu_option 7 "Swap Manager - Create/manage swap file" "$([[ $selected -eq 7 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 8 "Security - UFW firewall & Fail2Ban setup" "$([[ $selected -eq 8 ]] && echo true || echo false)")"
-    printf '\r\033[2K%s\n' "$(show_menu_option 9 "Nerd Fonts - Install patched developer fonts" "$([[ $selected -eq 9 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 3 "Uninstall Apps - Remove applications completely" "$([[ $selected -eq 3 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 4 "Optimize System - System health & tuning" "$([[ $selected -eq 4 ]] && echo true || echo false)")"
+    printf '\r\033[2K%s\n' "$(show_menu_option 5 "More Tools - Additional utilities & setup" "$([[ $selected -eq 5 ]] && echo true || echo false)")"
 
     if [[ -t 0 ]]; then
         printf '\r\033[2K\n'
@@ -506,6 +488,111 @@ show_main_menu() {
 
     # Clear any remaining content below without full screen wipe
     printf '\033[J'
+}
+
+# More Tools submenu
+show_more_tools_menu() {
+    local current_option=1
+    local first_draw=true
+
+    cleanup_and_exit_submenu() {
+        show_cursor
+        return 0
+    }
+
+    trap cleanup_and_exit_submenu INT
+    hide_cursor
+
+    while true; do
+        # Display submenu
+        printf '\033[H' # Move cursor to home
+
+        # Leading spacer
+        printf '\r\033[2K\n'
+
+        # Submenu header
+        printf '\r\033[2K%s\n' "${GREEN}╔═══════════════════════════════════════════════════════════════════════════╗${NC}"
+        printf '\r\033[2K%s\n' "${GREEN}║${NC}                           ${PURPLE}More Tools${NC}                                     ${GREEN}║${NC}"
+        printf '\r\033[2K%s\n' "${GREEN}╚═══════════════════════════════════════════════════════════════════════════╝${NC}"
+        printf '\r\033[2K\n'
+
+        # Submenu options
+        printf '\r\033[2K%s\n' "$(show_menu_option 1 "Analyze Disk - Interactive space explorer" "$([[ $current_option -eq 1 ]] && echo true || echo false)")"
+        printf '\r\033[2K%s\n' "$(show_menu_option 2 "Swap Manager - Create/manage swap file" "$([[ $current_option -eq 2 ]] && echo true || echo false)")"
+        printf '\r\033[2K%s\n' "$(show_menu_option 3 "Security - UFW firewall & Fail2Ban setup" "$([[ $current_option -eq 3 ]] && echo true || echo false)")"
+        printf '\r\033[2K%s\n' "$(show_menu_option 4 "Startup Apps - Manage auto-start programs" "$([[ $current_option -eq 4 ]] && echo true || echo false)")"
+        printf '\r\033[2K%s\n' "$(show_menu_option 5 "Nerd Fonts - Install patched developer fonts" "$([[ $current_option -eq 5 ]] && echo true || echo false)")"
+        printf '\r\033[2K%s\n' "$(show_menu_option 6 "Back to Main Menu" "$([[ $current_option -eq 6 ]] && echo true || echo false)")"
+
+        if [[ -t 0 ]]; then
+            printf '\r\033[2K\n'
+            printf '\r\033[2K%s\n' "${GRAY}↑/↓ Nav  ${GRAY}|${NC}  ${GRAY}Enter${NC} Select  ${GRAY}|${NC}  ${GRAY}Q${NC} Back"
+            printf '\r\033[2K\n'
+        fi
+
+        # Clear remaining content
+        printf '\033[J'
+
+        # Mark first draw complete
+        if [[ "$first_draw" == "true" ]]; then
+            first_draw=false
+        fi
+
+        # Drain pending input
+        drain_pending_input
+
+        local key
+        if ! key=$(read_key); then
+            continue
+        fi
+
+        case "$key" in
+            "UP") ((current_option > 1)) && ((current_option--)) ;;
+            "DOWN") ((current_option < 6)) && ((current_option++)) ;;
+            "ENTER")
+                show_cursor
+                case $current_option in
+                    1) exec "$SCRIPT_DIR/bin/analyze.sh" ;;
+                    2) exec "$SCRIPT_DIR/bin/swap.sh" ;;
+                    3) exec "$SCRIPT_DIR/bin/security.sh" ;;
+                    4) exec "$SCRIPT_DIR/bin/startup.sh" ;;
+                    5) exec "$SCRIPT_DIR/bin/nerd-fonts.sh" ;;
+                    6)
+                        show_cursor
+                        return 0
+                        ;;
+                esac
+                ;;
+            "CHAR:1")
+                show_cursor
+                exec "$SCRIPT_DIR/bin/analyze.sh"
+                ;;
+            "CHAR:2")
+                show_cursor
+                exec "$SCRIPT_DIR/bin/swap.sh"
+                ;;
+            "CHAR:3")
+                show_cursor
+                exec "$SCRIPT_DIR/bin/security.sh"
+                ;;
+            "CHAR:4")
+                show_cursor
+                exec "$SCRIPT_DIR/bin/startup.sh"
+                ;;
+            "CHAR:5")
+                show_cursor
+                exec "$SCRIPT_DIR/bin/nerd-fonts.sh"
+                ;;
+            "CHAR:6")
+                show_cursor
+                return 0
+                ;;
+            "QUIT")
+                show_cursor
+                return 0
+                ;;
+        esac
+    done
 }
 
 # Interactive main menu loop
@@ -563,19 +650,30 @@ interactive_main_menu() {
 
         case "$key" in
             "UP") ((current_option > 1)) && ((current_option--)) ;;
-            "DOWN") ((current_option < 9)) && ((current_option++)) ;;
+            "DOWN") ((current_option < 5)) && ((current_option++)) ;;
             "ENTER")
-                show_cursor
                 case $current_option in
-                    1) exec "$SCRIPT_DIR/bin/status.sh" ;;
-                    2) exec "$SCRIPT_DIR/bin/clean.sh" ;;
-                    3) exec "$SCRIPT_DIR/bin/optimize.sh" ;;
-                    4) exec "$SCRIPT_DIR/bin/analyze.sh" ;;
-                    5) exec "$SCRIPT_DIR/bin/uninstall.sh" ;;
-                    6) exec "$SCRIPT_DIR/bin/startup.sh" ;;
-                    7) exec "$SCRIPT_DIR/bin/swap.sh" ;;
-                    8) exec "$SCRIPT_DIR/bin/security.sh" ;;
-                    9) exec "$SCRIPT_DIR/bin/nerd-fonts.sh" ;;
+                    1)
+                        show_cursor
+                        exec "$SCRIPT_DIR/bin/status.sh"
+                        ;;
+                    2)
+                        show_cursor
+                        exec "$SCRIPT_DIR/bin/clean.sh"
+                        ;;
+                    3)
+                        show_cursor
+                        exec "$SCRIPT_DIR/bin/uninstall.sh"
+                        ;;
+                    4)
+                        show_cursor
+                        exec "$SCRIPT_DIR/bin/optimize.sh"
+                        ;;
+                    5)
+                        show_more_tools_menu
+                        hide_cursor
+                        first_draw=true
+                        ;;
                 esac
                 ;;
             "CHAR:1")
@@ -588,31 +686,16 @@ interactive_main_menu() {
                 ;;
             "CHAR:3")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/optimize.sh"
+                exec "$SCRIPT_DIR/bin/uninstall.sh"
                 ;;
             "CHAR:4")
                 show_cursor
-                exec "$SCRIPT_DIR/bin/analyze.sh"
+                exec "$SCRIPT_DIR/bin/optimize.sh"
                 ;;
             "CHAR:5")
-                show_cursor
-                exec "$SCRIPT_DIR/bin/uninstall.sh"
-                ;;
-            "CHAR:6")
-                show_cursor
-                exec "$SCRIPT_DIR/bin/startup.sh"
-                ;;
-            "CHAR:7")
-                show_cursor
-                exec "$SCRIPT_DIR/bin/swap.sh"
-                ;;
-            "CHAR:8")
-                show_cursor
-                exec "$SCRIPT_DIR/bin/security.sh"
-                ;;
-            "CHAR:9")
-                show_cursor
-                exec "$SCRIPT_DIR/bin/nerd-fonts.sh"
+                show_more_tools_menu
+                hide_cursor
+                first_draw=true
                 ;;
             "HELP")
                 show_cursor
