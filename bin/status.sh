@@ -311,20 +311,7 @@ display_status() {
     echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
-    # System Info Grid (2 columns)
-    echo -e "${CYAN}┌─────────────────────────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${CYAN}│${NC} ${PURPLE}SYSTEM INFORMATION${NC}                                                      ${CYAN}│${NC}"
-    echo -e "${CYAN}├─────────────────────────────────────────────────────────────────────────────┤${NC}"
-    print_grid_row "OS" "$os_info" "" "$NC" "Kernel" "$kernel" "" "$NC"
-    print_grid_row "Uptime" "$uptime" "" "$CYAN" "Processes" "$process_count" "" "$CYAN"
-    echo -e "${CYAN}└─────────────────────────────────────────────────────────────────────────────┘${NC}"
-    echo ""
-
-    # CPU & Memory Grid (2 columns)
-    echo -e "${CYAN}┌─────────────────────────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${CYAN}│${NC} ${PURPLE}CPU & MEMORY${NC}                                                            ${CYAN}│${NC}"
-    echo -e "${CYAN}├─────────────────────────────────────────────────────────────────────────────┤${NC}"
-
+    # Color calculations
     local cpu_color=$GREEN
     [[ $(echo "$cpu_usage > 80" | bc -l) -eq 1 ]] && cpu_color=$RED
     [[ $(echo "$cpu_usage > 60" | bc -l) -eq 1 ]] && [[ $(echo "$cpu_usage <= 80" | bc -l) -eq 1 ]] && cpu_color=$YELLOW
@@ -333,28 +320,38 @@ display_status() {
     [[ $(echo "$mem_percent > 80" | bc -l) -eq 1 ]] && mem_color=$RED
     [[ $(echo "$mem_percent > 60" | bc -l) -eq 1 ]] && [[ $(echo "$mem_percent <= 80" | bc -l) -eq 1 ]] && mem_color=$YELLOW
 
-    print_grid_row "CPU Usage" "${cpu_usage}%" "" "$cpu_color" "Memory Usage" "${mem_percent}%" "" "$mem_color"
-    print_grid_row "CPU Cores" "$cpu_cores" "" "$NC" "RAM" "${mem_used}GB / ${mem_total}GB" "" "$NC"
-    print_grid_row "Load Avg" "$load_avg" "" "$CYAN" "Available" "${mem_available}GB" "" "$GREEN"
-    print_grid_row "Temperature" "$cpu_temp" "" "$YELLOW" "Swap" "${swap_used}GB / ${swap_total}GB" "(${swap_percent}%)" "$GRAY"
-
-    echo -e "${CYAN}└─────────────────────────────────────────────────────────────────────────────┘${NC}"
-    echo ""
-
-    # Disk & Network Grid (2 columns)
-    echo -e "${CYAN}┌─────────────────────────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${CYAN}│${NC} ${PURPLE}DISK & NETWORK${NC}                                                          ${CYAN}│${NC}"
-    echo -e "${CYAN}├─────────────────────────────────────────────────────────────────────────────┤${NC}"
-
     local disk_color=$GREEN
     [[ $disk_percent -gt 80 ]] && disk_color=$RED
     [[ $disk_percent -gt 60 ]] && [[ $disk_percent -le 80 ]] && disk_color=$YELLOW
 
-    print_grid_row "Disk Usage" "${disk_percent}%" "" "$disk_color" "Network If" "$net_interface" "" "$CYAN"
-    print_grid_row "Used / Free" "${disk_used} / ${disk_available}" "" "$NC" "Download" "${net_download} MB/s" "" "$GREEN"
-    print_grid_row "Total Space" "$disk_total" "" "$NC" "Upload" "${net_upload} MB/s" "" "$GREEN"
-    print_grid_row "Read Speed" "${disk_read} MB/s" "" "$YELLOW" "Write Speed" "${disk_write} MB/s" "" "$YELLOW"
+    # Row 1: System Info & CPU
+    echo -e "${CYAN}┌────────────────────────────────────┐${NC} ${CYAN}┌────────────────────────────────────┐${NC}"
+    echo -e "${CYAN}│${NC} ${PURPLE}SYSTEM INFORMATION${NC}             ${CYAN}│${NC} ${CYAN}│${NC} ${PURPLE}CPU${NC}                                ${CYAN}│${NC}"
+    echo -e "${CYAN}├────────────────────────────────────┤${NC} ${CYAN}├────────────────────────────────────┤${NC}"
+    printf "${CYAN}│${NC} %-17s %-17s${CYAN}│${NC} ${CYAN}│${NC} %-17s ${cpu_color}%-17s${NC}${CYAN}│${NC}\n" "OS:" "$os_info" "CPU Usage:" "${cpu_usage}%"
+    printf "${CYAN}│${NC} %-17s %-17s${CYAN}│${NC} ${CYAN}│${NC} %-17s %-17s${CYAN}│${NC}\n" "Kernel:" "$kernel" "CPU Cores:" "$cpu_cores"
+    printf "${CYAN}│${NC} %-17s ${CYAN}%-17s${NC}${CYAN}│${NC} ${CYAN}│${NC} %-17s ${CYAN}%-17s${NC}${CYAN}│${NC}\n" "Uptime:" "$uptime" "Load Average:" "$load_avg"
+    printf "${CYAN}│${NC} %-17s ${CYAN}%-17s${NC}${CYAN}│${NC} ${CYAN}│${NC} %-17s ${YELLOW}%-17s${NC}${CYAN}│${NC}\n" "Processes:" "$process_count" "Temperature:" "$cpu_temp"
+    echo -e "${CYAN}└────────────────────────────────────┘${NC} ${CYAN}└────────────────────────────────────┘${NC}"
+    echo ""
 
+    # Row 2: Memory & Disk
+    echo -e "${CYAN}┌────────────────────────────────────┐${NC} ${CYAN}┌────────────────────────────────────┐${NC}"
+    echo -e "${CYAN}│${NC} ${PURPLE}MEMORY${NC}                             ${CYAN}│${NC} ${CYAN}│${NC} ${PURPLE}DISK${NC}                               ${CYAN}│${NC}"
+    echo -e "${CYAN}├────────────────────────────────────┤${NC} ${CYAN}├────────────────────────────────────┤${NC}"
+    printf "${CYAN}│${NC} %-17s ${mem_color}%-17s${NC}${CYAN}│${NC} ${CYAN}│${NC} %-17s ${disk_color}%-17s${NC}${CYAN}│${NC}\n" "Memory Usage:" "${mem_percent}%" "Disk Usage:" "${disk_percent}%"
+    printf "${CYAN}│${NC} %-17s %-17s${CYAN}│${NC} ${CYAN}│${NC} %-17s %-17s${CYAN}│${NC}\n" "RAM:" "${mem_used}GB/${mem_total}GB" "Used / Free:" "${disk_used}/${disk_available}"
+    printf "${CYAN}│${NC} %-17s ${GREEN}%-17s${NC}${CYAN}│${NC} ${CYAN}│${NC} %-17s %-17s${CYAN}│${NC}\n" "Available:" "${mem_available}GB" "Total Space:" "$disk_total"
+    printf "${CYAN}│${NC} %-17s ${GRAY}%-17s${NC}${CYAN}│${NC} ${CYAN}│${NC} %-17s ${YELLOW}%-17s${NC}${CYAN}│${NC}\n" "Swap:" "${swap_used}GB/${swap_total}GB" "Read / Write:" "${disk_read}/${disk_write}MB/s"
+    echo -e "${CYAN}└────────────────────────────────────┘${NC} ${CYAN}└────────────────────────────────────┘${NC}"
+    echo ""
+
+    # Row 3: Network (full width)
+    echo -e "${CYAN}┌─────────────────────────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${CYAN}│${NC} ${PURPLE}NETWORK${NC}                                                                     ${CYAN}│${NC}"
+    echo -e "${CYAN}├─────────────────────────────────────────────────────────────────────────────┤${NC}"
+    printf "${CYAN}│${NC} %-17s ${CYAN}%-17s${NC}   %-17s ${GREEN}%-17s${NC}${CYAN}│${NC}\n" "Interface:" "$net_interface" "Download:" "${net_download} MB/s"
+    printf "${CYAN}│${NC} %-17s %-17s   %-17s ${GREEN}%-17s${NC}${CYAN}│${NC}\n" "" "" "Upload:" "${net_upload} MB/s"
     echo -e "${CYAN}└─────────────────────────────────────────────────────────────────────────────┘${NC}"
     echo ""
 
