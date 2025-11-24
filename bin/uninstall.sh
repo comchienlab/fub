@@ -202,20 +202,27 @@ scan_all_applications() {
     } &
     local appimage_pid=$!
 
-    # Wait for all parallel scans to complete
-    wait $apt_pid 2>/dev/null
-    wait $snap_pid 2>/dev/null
-    wait $flatpak_pid 2>/dev/null
-    wait $appimage_pid 2>/dev/null
+    # Wait for all parallel scans to complete with error handling
+    wait $apt_pid 2>/dev/null || true
+    wait $snap_pid 2>/dev/null || true
+    wait $flatpak_pid 2>/dev/null || true
+    wait $appimage_pid 2>/dev/null || true
+
+    # Ensure temp files exist before merging
+    touch "$apt_tmp" "$snap_tmp" "$flatpak_tmp" "$appimage_tmp" 2>/dev/null
 
     # Merge results
-    cat "$apt_tmp" "$snap_tmp" "$flatpak_tmp" "$appimage_tmp" > "$output_file" 2>/dev/null
+    cat "$apt_tmp" "$snap_tmp" "$flatpak_tmp" "$appimage_tmp" 2>/dev/null > "$output_file" || true
 
     # Cleanup temp files
-    rm -f "$apt_tmp" "$snap_tmp" "$flatpak_tmp" "$appimage_tmp"
+    rm -f "$apt_tmp" "$snap_tmp" "$flatpak_tmp" "$appimage_tmp" 2>/dev/null || true
 
-    local total_count=$(wc -l < "$output_file")
-    echo -e "${GREEN}✓${NC} Found $total_count applications (parallel scan complete)"
+    local total_count=$(wc -l < "$output_file" 2>/dev/null || echo "0")
+    if [[ $total_count -gt 0 ]]; then
+        echo -e "${GREEN}✓${NC} Found $total_count applications (parallel scan complete)"
+    else
+        echo -e "${YELLOW}⚠${NC} No applications found or scan incomplete"
+    fi
 }
 
 # Legacy scan function (kept for compatibility)
