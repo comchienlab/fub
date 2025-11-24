@@ -304,14 +304,11 @@ display_status() {
 
     # Header with health score
     echo ""
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}      ___       _     ${PURPLE}●${NC}  ${CYAN}System Status Dashboard${NC}"
-    echo -e "${GREEN}     / __)     | |    ${NC}"
-    echo -e "${GREEN}    | |__ _   _| |__  ${GRAY}Real-time system health monitoring${NC}"
-    echo -e "${GREEN}    |  __) | | |  _ \ ${NC}"
-    echo -e "${GREEN}    | |  | |_| | |_) |${NC}  ${health_color}◉ Health Score: ${health_score}/100${NC} ${GRAY}(${health_status})${NC}"
-    echo -e "${GREEN}    |_|   \__,_|_.__/ ${NC}"
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║${NC}                      ${PURPLE}Fub System Status Dashboard${NC}                       ${GREEN}║${NC}"
+    echo -e "${GREEN}╠═══════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${GREEN}║${NC}  Health Score: ${health_color}${health_score}/100${NC} (${health_status})                                              ${GREEN}║${NC}"
+    echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
     # System Info Grid (2 columns)
