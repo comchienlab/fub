@@ -304,11 +304,11 @@ display_status() {
 
     # Header with health score
     echo ""
-    echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║${NC}                      ${PURPLE}Fub System Status Dashboard${NC}                       ${GREEN}║${NC}"
-    echo -e "${GREEN}╠═══════════════════════════════════════════════════════════════════════════╣${NC}"
-    echo -e "${GREEN}║${NC}  Health Score: ${health_color}${health_score}/100${NC} (${health_status})                                              ${GREEN}║${NC}"
-    echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  ${GREEN}◉${NC}  ${CYAN}System Status Dashboard${NC}       Health Score: ${health_color}${health_score}/100${NC} ${GRAY}(${health_status})${NC}"
+    echo ""
+    echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
     # Color calculations
